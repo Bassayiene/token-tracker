@@ -62,23 +62,20 @@ sudo ufw allow 443/udp
 sudo ufw enable
 ```
 
-## 4. Envoyer le code
-
-Depuis ton PC, dans `D:\projet TN` (Git Bash). On exclut les dépendances et builds, reconstruits sur le VPS :
-
-```bash
-tar --exclude=node_modules --exclude=dist --exclude=.angular --exclude=target --exclude=.env --exclude=.git \
-    -czf token-tracker.tgz backend frontend deploy docker-compose.prod.yml .env.example
-scp token-tracker.tgz user@IP_DU_VPS:~
-```
+## 4. Récupérer le code
 
 Sur le VPS :
 
 ```bash
-mkdir -p ~/token-tracker && tar -xzf ~/token-tracker.tgz -C ~/token-tracker && cd ~/token-tracker
+sudo apt-get install -y git     # si git n'est pas installé
+git clone https://github.com/Bassayiene/token-tracker.git ~/token-tracker
+cd ~/token-tracker
 ```
 
-(Plus tard, avec un dépôt Git distant, `git clone` / `git pull` remplacera cette étape.)
+Si le dépôt est **privé**, GitHub demande un identifiant : utilise ton nom d'utilisateur et un
+**Personal Access Token** en lecture seule (GitHub > Settings > Developer settings > Fine-grained tokens,
+accès « Contents: Read-only » limité à ce dépôt), pas ton mot de passe. Autre solution : une *deploy key* SSH
+(Settings du dépôt > Deploy keys), avec l'URL `git@github.com:Bassayiene/token-tracker.git`.
 
 ## 5. Configurer `.env`
 
@@ -123,7 +120,7 @@ Toutes les commandes se lancent dans `~/token-tracker`. Alias pratique :
 
 | Action | Commande |
 |---|---|
-| Mettre à jour après un nouvel envoi du code | `dc up -d --build` |
+| Mettre à jour (après un push depuis ton PC) | `git pull && dc up -d --build` |
 | Logs | `dc logs -f --tail=200 backend` |
 | Redémarrer | `dc restart backend` |
 | Arrêter (données conservées) | `dc down` |
