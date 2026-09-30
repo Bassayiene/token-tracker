@@ -27,6 +27,9 @@ const DAILY_RANGES: RangeOption[] = [
 
 const DAY_MS = 24 * 3600 * 1000;
 
+/** Block explorer used to inspect a holder address. */
+const EXPLORER_ADDRESS_URL = 'https://wscan.io/';
+
 @Component({
   selector: 'app-token-detail',
   imports: [RouterLink, DatePipe, AmountPipe, SignedPercentPipe, ShortIdPipe, LineChart],
@@ -100,6 +103,10 @@ export class TokenDetail {
       this.auth.isAuthenticated();
       untracked(() => this.loadAll());
     });
+  }
+
+  protected explorerUrl(address: string): string {
+    return EXPLORER_ADDRESS_URL + encodeURIComponent(address);
   }
 
   protected selectPriceRange(range: RangeOption): void {

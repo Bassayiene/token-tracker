@@ -165,8 +165,14 @@
                 @for (h of th.holders; track h.address) {
                   <tr>
                     <td class="num">{{ h.rank }}</td>
-                    <td class="mono" [title]="h.address">
-                      {{ h.address | shortId: 8 : 6 }}
+                    <td class="mono">
+                      <a
+                        [href]="explorerUrl(h.address)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        [title]="'Open ' + h.address + ' on wscan.io'"
+                        >{{ h.address | shortId: 8 : 6 }} ↗</a
+                      >
                       @if (h.isNew) {
                         <span class="badge">new</span>
                       }
