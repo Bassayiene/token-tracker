@@ -60,6 +60,37 @@ services:
       - backend
     logging: *logging
 
+  # Nightly pg_dump into ./backups (daily/weekly/monthly rotation), see deploy/backup/backup.sh.
+  # Same PostgreSQL major version as the server, so pg_dump/pg_restore are compatible.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    entrypoint: ["sh", "/scripts/entrypoint.sh"]
+    environment:
+      TZ: UTC
+      PGHOST: postgres
+      PGDATABASE: token_tracker
+      PGUSER: ${DB_USER:-token_tracker}
+      PGPASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      # 01:45 UTC: right after the daily collection (01:15), so the day's holder snapshot is included.
+      BACKUP_CRON: ${BACKUP_CRON:-45 1 * * *}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-8}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+    volumes:
+      - ./deploy/backup:/scripts:ro
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Unhealthy when no backup succeeded in the last 26 hours
+      test: ["CMD-SHELL", "find /backups/last-success -mmin -1560 | grep -q ."]
+      interval: 5m
+      timeout: 10s
+      start_period: 2m
+    logging: *logging
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

@@ -125,22 +125,59 @@ Toutes les commandes se lancent dans `~/token-tracker`. Alias pratique :
 | Redémarrer | `dc restart backend` |
 | Arrêter (données conservées) | `dc down` |
 
-**Sauvegarde de la base** (à planifier, par exemple chaque nuit avec `crontab -e`) :
+## Sauvegardes
+
+Le conteneur `backup` sauvegarde la base **chaque nuit à 01:45 UTC**, juste après la collecte quotidienne.
+Chaque dump est vérifié avant d'être gardé.
+
+Les fichiers vont dans `~/token-tracker/backups/` :
+
+| Dossier | Contenu | Conservés |
+|---|---|---|
+| `daily/` | une sauvegarde par jour | les 14 dernières |
+| `weekly/` | celle du dimanche | les 8 dernières |
+| `monthly/` | celle du 1er du mois | les 12 dernières |
+
+La rotation se fait par nombre de fichiers, pas par âge. Si les sauvegardes s'arrêtent, les anciennes ne sont donc
+jamais supprimées. Le nombre de copies et l'horaire se règlent dans `.env` avec `BACKUP_KEEP_DAILY`,
+`BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY` et `BACKUP_CRON`.
+
+| Action | Commande |
+|---|---|
+| État (doit être `healthy`) | `dc ps backup` |
+| Journal des sauvegardes | `dc logs --tail=50 backup` |
+| Sauvegarder maintenant (avant une mise à jour risquée, par ex.) | `dc exec backup sh /scripts/backup.sh` |
+| Lister les sauvegardes | `ls -lh backups/*/` |
+
+Le conteneur passe **`unhealthy`** si aucune sauvegarde n'a réussi depuis 26 heures.
+
+> ⚠️ Ces sauvegardes restent **sur le VPS**. Elles protègent contre une erreur (données supprimées, mauvaise mise
+> à jour), **pas contre la perte du serveur**. Récupère-les régulièrement sur ton PC :
+> `scp -r root@188.34.188.109:~/token-tracker/backups/monthly .` (ou `weekly`, `daily`).
+
+### Restaurer une sauvegarde
+
+La restauration **remplace toute la base** par le contenu du fichier choisi. Elle se fait en une seule transaction :
+en cas d'erreur, rien n'est modifié.
 
 ```bash
-docker compose -f ~/token-tracker/docker-compose.prod.yml exec -T postgres \
-  pg_dump -U token_tracker token_tracker | gzip > ~/backup-token-tracker-$(date +%F).sql.gz
+cd ~/token-tracker
+dc exec backup sh /scripts/backup.sh                    # sauvegarde de l'état actuel, par précaution
+dc exec backup sh /scripts/restore.sh                   # liste les sauvegardes disponibles
+dc stop backend
+dc exec backup sh /scripts/restore.sh /backups/daily/<fichier>.dump --yes
+dc start backend
 ```
 
-**Restauration :**
+Au redémarrage, le backend rattrape automatiquement les prix manquants depuis la date de la sauvegarde.
 
-```bash
-gunzip -c backup.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U token_tracker token_tracker
-```
+Sur un **nouveau serveur**, déploie d'abord le projet (étapes 1 à 6), copie le dossier `backups/`, puis suis la
+même procédure.
 
 ## Points d'attention
 
 - **Ne jamais utiliser `docker compose down -v`** en production : cela supprime la base et les certificats.
+  Le dossier `backups/` survivrait, mais autant ne pas en avoir besoin.
 - **Le mot de passe admin n'est lu qu'à la création du compte.** Changer `ADMIN_PASSWORD` ensuite ne modifie rien.
 - **Changer `JWT_SECRET` déconnecte tout le monde.** C'est sans autre conséquence.
 - **Petit VPS (1 Go de RAM) :** le build Maven/Angular peut échouer faute de mémoire.
