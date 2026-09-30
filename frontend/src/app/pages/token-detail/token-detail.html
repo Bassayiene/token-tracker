@@ -1,0 +1,217 @@
+<a routerLink="/" class="back">← All tokens</a>
+
+@if (error()) {
+  <p class="alert error">{{ error() }}</p>
+}
+@if (notice()) {
+  <p class="alert info">{{ notice() }}</p>
+}
+
+@if (token(); as t) {
+  <div class="page-head">
+    <div>
+      <h1>
+        {{ t.name }}
+        @if (t.ticker) {
+          <span class="muted">({{ t.ticker }})</span>
+        }
+      </h1>
+      <div class="muted small mono">{{ t.assetId }}</div>
+    </div>
+    @if (auth.isAdmin()) {
+      <button type="button" (click)="sync()" [disabled]="syncing()">
+        {{ syncing() ? 'Syncing…' : 'Sync now' }}
+      </button>
+    }
+  </div>
+
+  @if (t.description) {
+    <p class="description">{{ t.description }}</p>
+  }
+
+  <div class="stats">
+    <div class="card stat">
+      <div class="stat-label">Price</div>
+      <div class="stat-value">
+        {{ t.lastPrice | amount }} <span class="small">{{ t.priceAsset }}</span>
+      </div>
+      <div class="muted small">
+        Last trade {{ (t.lastTradeTime | date: 'yyyy-MM-dd HH:mm' : 'UTC') ?? '—' }} UTC
+      </div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">Change</div>
+      <div class="stat-value">
+        <span [class]="trendClass(t.change24h)">{{ t.change24h | signedPercent }}</span>
+        <span class="small muted"> 24h</span>
+      </div>
+      <div class="small">
+        <span [class]="trendClass(t.change7d)">{{ t.change7d | signedPercent }}</span>
+        <span class="muted"> 7d</span>
+      </div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">Quantity</div>
+      <div class="stat-value">{{ t.quantity | amount }}</div>
+      <div class="muted small">
+        {{ t.decimals }} decimals · {{ t.reissuable ? 'reissuable' : 'not reissuable' }}
+        @if (t.hasScript) {
+          · scripted
+        }
+      </div>
+    </div>
+    @if (auth.isAuthenticated()) {
+      <div class="card stat">
+        <div class="stat-label">Holders</div>
+        <div class="stat-value">{{ t.holdersCount ?? '—' }}</div>
+        <div class="muted small">
+          Top 10: {{ t.top10Share === null ? '—' : (t.top10Share | amount: 4) + ' %' }} · Top 100:
+          {{ t.top100Share === null ? '—' : (t.top100Share | amount: 4) + ' %' }}
+        </div>
+      </div>
+    }
+  </div>
+
+  <section class="card">
+    <div class="section-head">
+      <h2>Hourly price</h2>
+      <div class="segmented">
+        @for (r of priceRanges; track r.label) {
+          <button type="button" [class.active]="r === priceRange()" (click)="selectPriceRange(r)">
+            {{ r.label }}
+          </button>
+        }
+      </div>
+    </div>
+    @if (prices().length) {
+      <app-line-chart [labels]="priceLabels()" [series]="priceSeries()" />
+      <p class="muted small">
+        {{ tradedHours() }} of {{ prices().length }} hours had trades · volume
+        {{ periodVolume() | amount }} {{ t.ticker ?? t.name }} (times in UTC)
+      </p>
+    } @else {
+      <p class="muted">No price collected for this period yet.</p>
+    }
+  </section>
+
+  @if (auth.isAuthenticated()) {
+    <div class="section-head">
+      <h2>Daily history</h2>
+      <div class="segmented">
+        @for (r of dailyRanges; track r.label) {
+          <button type="button" [class.active]="r === dailyRange()" (click)="selectDailyRange(r)">
+            {{ r.label }}
+          </button>
+        }
+      </div>
+    </div>
+    <div class="two-cols">
+      <section class="card">
+        <h3>Quantity</h3>
+        @if (quantities().length) {
+          <app-line-chart [labels]="quantityLabels()" [series]="quantitySeries()" />
+        } @else {
+          <p class="muted">No quantity collected for this period yet.</p>
+        }
+      </section>
+      <section class="card">
+        <h3>Holders and concentration</h3>
+        @if (holderStats().length) {
+          <app-line-chart [labels]="statsLabels()" [series]="statsSeries()" rightUnit=" %" />
+        } @else {
+          <p class="muted">No holder statistics collected for this period yet.</p>
+        }
+      </section>
+    </div>
+
+    <section class="card">
+      @if (topHolders(); as th) {
+        <div class="section-head">
+          <h2>Top holders</h2>
+          @if (th.availableDates.length) {
+            <select
+              aria-label="Snapshot day"
+              [value]="th.date"
+              (change)="selectHoldersDate($any($event.target).value)"
+            >
+              @for (d of th.availableDates; track d) {
+                <option [value]="d">{{ d }}</option>
+              }
+            </select>
+          }
+        </div>
+        @if (!th.holders.length) {
+          <p class="muted">No holder snapshot collected yet.</p>
+        } @else {
+          <p class="muted small">
+            Snapshot of {{ th.date }} at block {{ th.height }}
+            @if (th.previousDate) {
+              · changes compared with {{ th.previousDate }}
+            }
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="num">#</th>
+                  <th>Address</th>
+                  <th class="num">Balance</th>
+                  <th class="num">Share</th>
+                  <th class="num">Balance change</th>
+                  <th class="num">Rank change</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (h of th.holders; track h.address) {
+                  <tr>
+                    <td class="num">{{ h.rank }}</td>
+                    <td class="mono" [title]="h.address">
+                      {{ h.address | shortId: 8 : 6 }}
+                      @if (h.isNew) {
+                        <span class="badge">new</span>
+                      }
+                    </td>
+                    <td class="num">{{ h.balance | amount }}</td>
+                    <td class="num">{{ h.share | amount: 4 }} %</td>
+                    <td class="num" [class]="trendClass(h.balanceChange)">
+                      @if (h.balanceChange === null) {
+                        —
+                      } @else {
+                        {{ h.balanceChange > 0 ? '+' : '' }}{{ h.balanceChange | amount }}
+                      }
+                    </td>
+                    <td class="num" [class]="trendClass(h.rankChange)">
+                      @if (h.rankChange === null || h.rankChange === 0) {
+                        —
+                      } @else {
+                        {{ h.rankChange > 0 ? '▲' : '▼' }}
+                        {{ h.rankChange > 0 ? h.rankChange : -h.rankChange }}
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+    </section>
+  } @else {
+    <section class="card locked">
+      <p>Quantity history, holder statistics and top holders are available to registered users.</p>
+      <div class="links">
+        <a [routerLink]="['/login']" [queryParams]="{ returnUrl: '/tokens/' + t.assetId }"
+          >Log in</a
+        >
+        <a
+          [routerLink]="['/register']"
+          [queryParams]="{ returnUrl: '/tokens/' + t.assetId }"
+          class="button-link"
+          >Create an account</a
+        >
+      </div>
+    </section>
+  }
+} @else if (!error()) {
+  <p class="muted">Loading…</p>
+}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- First tracked token. Values from https://api.wavesplatform.com/v0/assets/bPWkA3MNyEr1TuDchWgdpqJZhGhfPXj7dJdr3qiW2kD -->
+    <changeSet id="20260930_02_seed_turtlenetwork" author="token-tracker">
+        <insert tableName="token">
+            <column name="asset_id" value="bPWkA3MNyEr1TuDchWgdpqJZhGhfPXj7dJdr3qiW2kD" />
+            <column name="name" value="TurtleNetwork" />
+            <column name="ticker" value="TN" />
+            <column name="decimals" valueNumeric="8" />
+            <column name="description" value="Official token for TurtleNetwork&#10;1:1 backed by TurtleNetwork" />
+            <!-- Explicit offset so the value does not depend on the session time zone -->
+            <column name="created_at" valueComputed="TIMESTAMP WITH TIME ZONE '2019-03-13 18:36:10.377+00:00'" />
+            <column name="reissuable" valueBoolean="false" />
+            <column name="has_script" valueBoolean="false" />
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

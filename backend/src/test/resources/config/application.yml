@@ -1,0 +1,51 @@
+# ===================================================================
+# Configuration used by tests: in-memory H2 (PostgreSQL mode) with the real
+# Liquibase changelogs, so the schema is validated against the entities.
+# ===================================================================
+spring:
+  application:
+    name: token-tracker
+  datasource:
+    url: jdbc:h2:mem:tokentracker;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  liquibase:
+    change-log: config/liquibase/master.xml
+    enabled: true
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+token-tracker:
+  price-asset: WAVES
+  top-holders-limit: 3
+  waves:
+    data-api-url: https://api.wavesplatform.com/v0
+    node-url: https://nodes.wavesnodes.com
+    distribution-page-size: 1000
+    connect-timeout: 5s
+    read-timeout: 30s
+  sync:
+    # Jobs never fire during tests
+    price-cron: "-"
+    daily-cron: "-"
+    price-lookback-hours: 24
+    price-backfill-days: 30
+    price-chunk-days: 10
+    last-trade-search-days: 365
+    run-on-startup: false
+  cors:
+    allowed-origins: http://localhost:4200
+  security:
+    jwt-secret: dGVzdC1vbmx5LWp3dC1zZWNyZXQtb2YtYXQtbGVhc3QtMjU2LWJpdHM=
+    token-validity: 1h
+    admin-username: admin
+    admin-password: admin-password

@@ -1,0 +1,105 @@
+<div class="page-head">
+  <h1>Tracked tokens</h1>
+  @if (auth.isAdmin()) {
+    <button type="button" (click)="syncAll()" [disabled]="busy() || !tokens().length">
+      Sync all now
+    </button>
+  }
+</div>
+
+@if (auth.isAdmin()) {
+  <form class="add-form card" [formGroup]="addForm" (ngSubmit)="add()">
+    <label for="assetId">Track a new asset</label>
+    <div class="row">
+      <input
+        id="assetId"
+        type="text"
+        placeholder="Waves asset id (base58)"
+        autocomplete="off"
+        spellcheck="false"
+        formControlName="assetId"
+      />
+      <button type="submit" class="primary" [disabled]="busy()">Add</button>
+    </div>
+    @if (assetId.touched && assetId.invalid && assetId.value) {
+      <p class="field-error">This is not a valid base58 asset id (32 to 44 characters).</p>
+    }
+  </form>
+}
+
+@if (error()) {
+  <p class="alert error">{{ error() }}</p>
+}
+@if (notice()) {
+  <p class="alert info">{{ notice() }}</p>
+}
+
+@if (loading()) {
+  <p class="muted">Loading…</p>
+} @else if (!tokens().length) {
+  <p class="muted">No token is tracked yet.</p>
+} @else {
+  <div class="card table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Token</th>
+          <th class="num">Price</th>
+          <th class="num">24h</th>
+          <th class="num">7d</th>
+          <th class="num">Quantity</th>
+          @if (auth.isAuthenticated()) {
+            <th class="num">Holders</th>
+            <th class="num">Top 10</th>
+          }
+          <th>Last price</th>
+          @if (auth.isAdmin()) {
+            <th></th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (token of tokens(); track token.assetId) {
+          <tr>
+            <td>
+              <a [routerLink]="['/tokens', token.assetId]" class="token-name">{{ token.name }}</a>
+              <div class="muted small mono">{{ token.assetId | shortId }}</div>
+            </td>
+            <td class="num">
+              {{ token.lastPrice | amount }}
+              <span class="muted small">{{ token.priceAsset }}</span>
+            </td>
+            <td class="num" [class]="trendClass(token.change24h)">
+              {{ token.change24h | signedPercent }}
+            </td>
+            <td class="num" [class]="trendClass(token.change7d)">
+              {{ token.change7d | signedPercent }}
+            </td>
+            <td class="num">{{ token.quantity | amount }}</td>
+            @if (auth.isAuthenticated()) {
+              <td class="num">{{ token.holdersCount ?? '—' }}</td>
+              <td class="num">
+                {{ token.top10Share === null ? '—' : (token.top10Share | amount: 4) + ' %' }}
+              </td>
+            }
+            <td class="small">{{ (token.lastPriceTime | date: 'yyyy-MM-dd HH:mm' : 'UTC') ?? '—' }}</td>
+            @if (auth.isAdmin()) {
+              <td class="actions">
+                <button type="button" class="danger small" (click)="remove(token)" [disabled]="busy()">
+                  Remove
+                </button>
+              </td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+@if (!auth.isAuthenticated() && tokens().length) {
+  <p class="muted small">
+    <a routerLink="/login">Log in</a> or <a routerLink="/register">create an account</a> to see holder
+    statistics, quantity history and top holders.
+  </p>
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- SCHEMA -->
+    <include file="config/liquibase/changelog/20260930_01_create_token_tables.xml" />
+    <include file="config/liquibase/changelog/20260930_03_create_app_user.xml" />
+
+    <!-- DATA -->
+    <include file="config/liquibase/changelog/20260930_02_seed_turtlenetwork.xml" />
+
+</databaseChangeLog>

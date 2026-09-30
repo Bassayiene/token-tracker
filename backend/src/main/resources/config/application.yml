@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: token-tracker
+  profiles:
+    active: dev
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.jdbc.batch_size: 100
+      hibernate.order_inserts: true
+  liquibase:
+    change-log: config/liquibase/master.xml
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8087
+
+management:
+  endpoints:
+    web:
+      base-path: /management
+      exposure:
+        include: health, info, metrics, prometheus, loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# ===================================================================
+# Token tracker specific properties (see TokenTrackerProperties)
+# ===================================================================
+token-tracker:
+  # Every price is expressed in this asset. Converting to USD is out of scope for now.
+  price-asset: WAVES
+  top-holders-limit: 100
+  waves:
+    data-api-url: https://api.wavesplatform.com/v0
+    node-url: https://nodes.wavesnodes.com
+    distribution-page-size: 1000
+    connect-timeout: 5s
+    read-timeout: 30s
+  sync:
+    # Spring cron format (sec min hour day month weekday), evaluated in UTC. "-" disables a job.
+    price-cron: "0 5 * * * *"
+    daily-cron: "0 15 1 * * *"
+    # Hourly job re-processes this many closed hours, so missed runs heal themselves.
+    price-lookback-hours: 24
+    # Hourly history fetched for a token that has no price yet.
+    price-backfill-days: 30
+    # Candle requests are split into chunks of this many days.
+    price-chunk-days: 10
+    # When no price is stored yet, daily candles this far back are searched for the last trade.
+    last-trade-search-days: 365
+    run-on-startup: true
+  cors:
+    allowed-origins: http://localhost:4200
+  security:
+    # Base64 HMAC key (>= 256 bits, e.g. `openssl rand -base64 32`). Blank: random key, tokens lost on restart.
+    jwt-secret: ${JWT_SECRET:}
+    token-validity: 12h
+    # Created with the ADMIN role at startup if missing. No admin account is created while the password is blank.
+    admin-username: ${ADMIN_USERNAME:admin}
+    admin-password: ${ADMIN_PASSWORD:}

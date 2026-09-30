@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Accounts. Usernames are stored lower-case; the admin account is created at startup from the configuration. -->
+    <changeSet id="20260930_03_app_user" author="token-tracker">
+        <createTable tableName="app_user">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="username" type="varchar(50)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="ux_app_user_username" />
+            </column>
+            <!-- BCrypt hash -->
+            <column name="password_hash" type="varchar(100)">
+                <constraints nullable="false" />
+            </column>
+            <!-- ADMIN or USER -->
+            <column name="role" type="varchar(20)">
+                <constraints nullable="false" />
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

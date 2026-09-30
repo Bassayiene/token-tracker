@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Tracked tokens: invariant data only, written once when the token is added. -->
+    <changeSet id="20260930_01_token" author="token-tracker">
+        <createTable tableName="token">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="ux_token_asset_id" />
+            </column>
+            <column name="name" type="varchar(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="ticker" type="varchar(32)" />
+            <column name="decimals" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <column name="description" type="varchar(1000)" />
+            <!-- On-chain issue date of the asset -->
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+            <column name="reissuable" type="boolean">
+                <constraints nullable="false" />
+            </column>
+            <column name="has_script" type="boolean">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- One row per token and per hour. Hours without trades carry the last known price. -->
+    <changeSet id="20260930_01_token_price" author="token-tracker">
+        <createTable tableName="token_price">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="price_time" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+            <!-- Null only while no trade has ever been found for the token -->
+            <column name="price" type="numeric(38,12)" />
+            <column name="volume" type="numeric(38,12)">
+                <constraints nullable="false" />
+            </column>
+            <column name="has_trades" type="boolean">
+                <constraints nullable="false" />
+            </column>
+            <column name="fetched_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="token_price" columnNames="asset_id, price_time"
+            constraintName="ux_token_price_asset_time" />
+        <addForeignKeyConstraint baseTableName="token_price" baseColumnNames="asset_id"
+            referencedTableName="token" referencedColumnNames="asset_id"
+            constraintName="fk_token_price_token" onDelete="CASCADE" />
+    </changeSet>
+
+    <!-- Daily snapshot of the raw issued quantity (divide by 10^decimals to display). -->
+    <changeSet id="20260930_01_token_quantity" author="token-tracker">
+        <createTable tableName="token_quantity">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="date" type="date">
+                <constraints nullable="false" />
+            </column>
+            <column name="quantity" type="bigint">
+                <constraints nullable="false" />
+            </column>
+            <column name="fetched_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="token_quantity" columnNames="asset_id, date"
+            constraintName="ux_token_quantity_asset_date" />
+        <addForeignKeyConstraint baseTableName="token_quantity" baseColumnNames="asset_id"
+            referencedTableName="token" referencedColumnNames="asset_id"
+            constraintName="fk_token_quantity_token" onDelete="CASCADE" />
+    </changeSet>
+
+    <!-- Daily snapshot of the largest holders (top N, 100 by default). -->
+    <changeSet id="20260930_01_token_top_holder" author="token-tracker">
+        <createTable tableName="token_top_holder">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="date" type="date">
+                <constraints nullable="false" />
+            </column>
+            <column name="rank" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <column name="address" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="balance" type="bigint">
+                <constraints nullable="false" />
+            </column>
+            <column name="height" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <column name="fetched_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="token_top_holder" columnNames="asset_id, date, rank"
+            constraintName="ux_token_top_holder_asset_date_rank" />
+        <addForeignKeyConstraint baseTableName="token_top_holder" baseColumnNames="asset_id"
+            referencedTableName="token" referencedColumnNames="asset_id"
+            constraintName="fk_token_top_holder_token" onDelete="CASCADE" />
+    </changeSet>
+
+    <!-- Daily holder statistics, computed from the full distribution scan. -->
+    <changeSet id="20260930_01_token_holder_stats" author="token-tracker">
+        <createTable tableName="token_holder_stats">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="date" type="date">
+                <constraints nullable="false" />
+            </column>
+            <column name="holders_count" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <!-- Percentage of the total quantity (0..100) -->
+            <column name="top10_share" type="numeric(9,4)">
+                <constraints nullable="false" />
+            </column>
+            <column name="top100_share" type="numeric(9,4)">
+                <constraints nullable="false" />
+            </column>
+            <column name="fetched_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="token_holder_stats" columnNames="asset_id, date"
+            constraintName="ux_token_holder_stats_asset_date" />
+        <addForeignKeyConstraint baseTableName="token_holder_stats" baseColumnNames="asset_id"
+            referencedTableName="token" referencedColumnNames="asset_id"
+            constraintName="fk_token_holder_stats_token" onDelete="CASCADE" />
+    </changeSet>
+
+</databaseChangeLog>

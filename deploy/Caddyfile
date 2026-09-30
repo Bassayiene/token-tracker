@@ -1,0 +1,15 @@
+# HTTPS certificate obtained and renewed automatically for {$DOMAIN}; HTTP is redirected to HTTPS.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# nginx serves the Angular app and forwards /api to the backend.
+	reverse_proxy frontend:80
+}

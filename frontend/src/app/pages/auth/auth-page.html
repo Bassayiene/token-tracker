@@ -1,0 +1,50 @@
+<div class="auth-box card">
+  <h1>{{ isRegister() ? 'Create an account' : 'Log in' }}</h1>
+  <p class="muted small">
+    @if (isRegister()) {
+      An account gives access to quantity history, holder statistics and top holders.
+    } @else {
+      Log in to see every collected figure of the tracked tokens.
+    }
+  </p>
+
+  @if (expired() && !isRegister()) {
+    <p class="alert info">Your session has expired. Please log in again.</p>
+  }
+  @if (error()) {
+    <p class="alert error">{{ error() }}</p>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="submit()">
+    <label for="username">Username</label>
+    <input id="username" type="text" formControlName="username" autocomplete="username" spellcheck="false" />
+
+    <label for="password">Password</label>
+    <input
+      id="password"
+      type="password"
+      formControlName="password"
+      [attr.autocomplete]="isRegister() ? 'new-password' : 'current-password'"
+    />
+    @if (isRegister()) {
+      <p class="muted small hint">At least {{ passwordMin }} characters.</p>
+
+      <label for="confirm">Confirm password</label>
+      <input id="confirm" type="password" formControlName="confirm" autocomplete="new-password" />
+    }
+
+    <button type="submit" class="primary" [disabled]="busy()">
+      {{ busy() ? 'Please wait…' : isRegister() ? 'Sign up' : 'Log in' }}
+    </button>
+  </form>
+
+  <p class="small switch">
+    @if (isRegister()) {
+      Already have an account?
+      <a routerLink="/login" [queryParams]="{ returnUrl: returnUrl() }">Log in</a>
+    } @else {
+      No account yet?
+      <a routerLink="/register" [queryParams]="{ returnUrl: returnUrl() }">Sign up</a>
+    }
+  </p>
+</div>

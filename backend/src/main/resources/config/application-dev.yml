@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    # PostgreSQL of docker-compose.yml (`docker compose up -d postgres`), exposed on 5433
+    url: jdbc:postgresql://localhost:5433/token_tracker
+    username: ${SPRING_DATASOURCE_USERNAME:token_tracker}
+    password: ${SPRING_DATASOURCE_PASSWORD:token_tracker}
+    hikari:
+      auto-commit: false
+      maximum-pool-size: 5
+      minimum-idle: 2
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.tokentracker: DEBUG
+    org.springframework: INFO

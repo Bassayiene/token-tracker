@@ -1,0 +1,21 @@
+<header class="topbar">
+  <a routerLink="/" class="brand">Token tracker</a>
+  <span class="muted small tagline">Waves / TurtleNetwork assets · prices in WAVES</span>
+  <nav class="account">
+    @if (auth.session(); as s) {
+      <span class="small">
+        {{ s.username }}
+        @if (s.role === 'ADMIN') {
+          <span class="badge">admin</span>
+        }
+      </span>
+      <button type="button" class="small" (click)="logout()">Log out</button>
+    } @else {
+      <a routerLink="/login" [queryParams]="{ returnUrl: returnUrl() }">Log in</a>
+      <a routerLink="/register" [queryParams]="{ returnUrl: returnUrl() }" class="button-link">Sign up</a>
+    }
+  </nav>
+</header>
+<main class="container">
+  <router-outlet />
+</main>
