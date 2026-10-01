@@ -1,12 +1,14 @@
 import { DatePipe, formatDate } from '@angular/common';
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { forkJoin, of } from 'rxjs';
 
 import { AuthService } from '../../core/auth.service';
 import { HolderStats, TokenPrice, TokenQuantity, TokenSummary, TopHolders } from '../../core/models';
 import { TokenApiService, errorMessage } from '../../core/token-api.service';
 import { AmountPipe, ShortIdPipe, SignedPercentPipe, trendClass } from '../../shared/formatting';
 import { ChartSeries, LineChart } from '../../shared/line-chart';
+import { crossRates, periodChange } from './cross-rate';
 
 interface RangeOption {
   label: string;
@@ -59,13 +61,32 @@ export class TokenDetail {
   protected readonly notice = signal<string | null>(null);
   protected readonly syncing = signal(false);
 
+  /** Other tracked tokens, in which the price can be expressed. */
+  protected readonly quoteOptions = signal<TokenSummary[]>([]);
+  /** Token the price is expressed in; null for the collected price asset (WAVES). */
+  protected readonly quote = signal<TokenSummary | null>(null);
+  /** Prices of the quote token over the same range, in the collected price asset. */
+  private readonly quotePrices = signal<TokenPrice[]>([]);
+  /** Ignores responses of a price request that a newer one replaced. */
+  private priceRequest = 0;
+
+  protected readonly quoteLabel = computed(() => {
+    const quote = this.quote();
+    return quote ? (quote.ticker ?? quote.name) : (this.token()?.priceAsset ?? '');
+  });
+  /** Displayed prices: as collected, or divided by the quote token price of the same hour. */
+  protected readonly displayedPrices = computed<(number | null)[]>(() =>
+    this.quote() ? crossRates(this.prices(), this.quotePrices()) : this.prices().map((p) => p.price),
+  );
+  protected readonly displayedChange = computed(() => periodChange(this.displayedPrices()));
+
   protected readonly priceLabels = computed(() =>
     this.prices().map((p) => formatDate(p.time, 'MM-dd HH:mm', 'en-US', 'UTC')),
   );
   protected readonly priceSeries = computed<ChartSeries[]>(() => [
     {
-      label: `Price (${this.token()?.priceAsset ?? ''})`,
-      data: this.prices().map((p) => p.price),
+      label: `Price (${this.quoteLabel()})`,
+      data: this.displayedPrices(),
       color: '#2563eb',
       fill: true,
     },
@@ -114,6 +135,12 @@ export class TokenDetail {
     this.loadPrices();
   }
 
+  /** @param assetId quote token, or an empty string for the collected price asset */
+  protected selectQuote(assetId: string): void {
+    this.quote.set(this.quoteOptions().find((t) => t.assetId === assetId) ?? null);
+    this.loadPrices();
+  }
+
   protected selectDailyRange(range: RangeOption): void {
     this.dailyRange.set(range);
     this.loadDaily();
@@ -155,6 +182,18 @@ export class TokenDetail {
       next: (token) => this.token.set(token),
       error: (err) => this.error.set(errorMessage(err)),
     });
+    this.api.getAll().subscribe({
+      next: (tokens) => {
+        const options = tokens.filter((t) => t.assetId !== this.assetId());
+        this.quoteOptions.set(options);
+        // Keep the selection on reload, pointing to the fresh object (or drop it if the token is gone)
+        const quoteId = this.quote()?.assetId;
+        if (quoteId) {
+          this.quote.set(options.find((t) => t.assetId === quoteId) ?? null);
+        }
+      },
+      error: (err) => this.error.set(errorMessage(err)),
+    });
     this.loadPrices();
     if (!this.auth.isAuthenticated()) {
       // Daily data and holders are reserved to authenticated users.
@@ -171,9 +210,19 @@ export class TokenDetail {
   }
 
   private loadPrices(): void {
+    const request = ++this.priceRequest;
     const from = new Date(Date.now() - this.priceRange().days * DAY_MS).toISOString();
-    this.api.getPrices(this.assetId(), { from }).subscribe({
-      next: (prices) => this.prices.set(prices),
+    const quote = this.quote();
+    forkJoin({
+      prices: this.api.getPrices(this.assetId(), { from }),
+      quotePrices: quote ? this.api.getPrices(quote.assetId, { from }) : of([]),
+    }).subscribe({
+      next: ({ prices, quotePrices }) => {
+        if (request === this.priceRequest) {
+          this.prices.set(prices);
+          this.quotePrices.set(quotePrices);
+        }
+      },
       error: (err) => this.error.set(errorMessage(err)),
     });
   }

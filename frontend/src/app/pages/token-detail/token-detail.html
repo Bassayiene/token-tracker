@@ -75,20 +75,41 @@
   <section class="card">
     <div class="section-head">
       <h2>Hourly price</h2>
-      <div class="segmented">
-        @for (r of priceRanges; track r.label) {
-          <button type="button" [class.active]="r === priceRange()" (click)="selectPriceRange(r)">
-            {{ r.label }}
-          </button>
-        }
+      <div class="controls">
+        <label class="small">
+          Price in
+          <select aria-label="Price in" (change)="selectQuote($any($event.target).value)">
+            <option value="" [selected]="!quote()">{{ t.priceAsset }}</option>
+            @for (o of quoteOptions(); track o.assetId) {
+              <option [value]="o.assetId" [selected]="o === quote()" [disabled]="o.lastPrice === null">
+                {{ o.ticker ?? o.name }}{{ o.lastPrice === null ? ' (no price)' : '' }}
+              </option>
+            }
+          </select>
+        </label>
+        <div class="segmented">
+          @for (r of priceRanges; track r.label) {
+            <button type="button" [class.active]="r === priceRange()" (click)="selectPriceRange(r)">
+              {{ r.label }}
+            </button>
+          }
+        </div>
       </div>
     </div>
     @if (prices().length) {
       <app-line-chart [labels]="priceLabels()" [series]="priceSeries()" />
       <p class="muted small">
-        {{ tradedHours() }} of {{ prices().length }} hours had trades · volume
+        {{ t.ticker ?? t.name }} in {{ quoteLabel() }} over the period:
+        <span [class]="trendClass(displayedChange())">{{ displayedChange() | signedPercent }}</span>
+        · {{ tradedHours() }} of {{ prices().length }} hours had trades · volume
         {{ periodVolume() | amount }} {{ t.ticker ?? t.name }} (times in UTC)
       </p>
+      @if (quote()) {
+        <p class="muted small">
+          Computed from both prices in {{ t.priceAsset }} ({{ t.ticker ?? t.name }} ÷
+          {{ quoteLabel() }}), not from a traded {{ t.ticker ?? t.name }}/{{ quoteLabel() }} market.
+        </p>
+      }
     } @else {
       <p class="muted">No price collected for this period yet.</p>
     }

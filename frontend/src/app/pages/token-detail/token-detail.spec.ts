@@ -9,6 +9,7 @@ import { TokenDetail } from './token-detail';
 
 const ASSET = 'bPWkA3MNyEr1TuDchWgdpqJZhGhfPXj7dJdr3qiW2kD';
 const ADDRESS = '3PRCoguiVX33Fj6z46qgxheib6K1267W7Zr';
+const XTN = '25FEqEjRkqK6yCkiT7Lz6SAYz7gUFCtxfCChnrVFD5AT';
 
 const TOKEN = {
   assetId: ASSET,
@@ -53,6 +54,7 @@ describe('TokenDetail', () => {
     fixture.detectChanges();
 
     http.expectOne(`/api/tokens/${ASSET}`).flush(TOKEN);
+    http.expectOne('/api/tokens').flush([TOKEN]);
     // Empty series: no chart is drawn (jsdom has no canvas)
     http.expectOne((r) => r.url === `/api/tokens/${ASSET}/prices`).flush([]);
     http.expectOne((r) => r.url === `/api/tokens/${ASSET}/quantities`).flush([]);
@@ -66,5 +68,40 @@ describe('TokenDetail', () => {
     expect(link.getAttribute('href')).toBe(`https://wscan.io/${ADDRESS}`);
     expect(link.target).toBe('_blank');
     expect(link.rel).toContain('noopener');
+  });
+
+  it('expresses the price in another tracked token', async () => {
+    const xtn = { ...TOKEN, assetId: XTN, name: 'XTN.', ticker: 'XTN' } as TokenSummary;
+    const fixture = TestBed.createComponent(TokenDetail);
+    fixture.componentRef.setInput('assetId', ASSET);
+    fixture.detectChanges();
+    http.expectOne(`/api/tokens/${ASSET}`).flush(TOKEN);
+    http.expectOne('/api/tokens').flush([TOKEN, xtn]);
+    http.expectOne((r) => r.url === `/api/tokens/${ASSET}/prices`).flush([]);
+    await fixture.whenStable();
+
+    const select = (fixture.nativeElement as HTMLElement).querySelector(
+      'select[aria-label="Price in"]',
+    ) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent?.trim())).toEqual(['WAVES', 'XTN']);
+
+    select.value = XTN;
+    select.dispatchEvent(new Event('change'));
+    http.expectOne((r) => r.url === `/api/tokens/${ASSET}/prices`).flush([
+      { time: '2026-09-30T10:00:00Z', price: 0.5, volume: 1, hasTrades: true },
+      { time: '2026-09-30T11:00:00Z', price: 0.75, volume: 0, hasTrades: false },
+    ]);
+    http.expectOne((r) => r.url === `/api/tokens/${XTN}/prices`).flush([
+      { time: '2026-09-30T10:00:00Z', price: 0.25, volume: 1, hasTrades: true },
+      { time: '2026-09-30T11:00:00Z', price: 0.25, volume: 0, hasTrades: false },
+    ]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance as unknown as {
+      priceSeries: () => { label: string; data: (number | null)[] }[];
+    };
+    expect(component.priceSeries()[0].label).toBe('Price (XTN)');
+    expect(component.priceSeries()[0].data).toEqual([2, 3]);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('+50.00 %');
   });
 });

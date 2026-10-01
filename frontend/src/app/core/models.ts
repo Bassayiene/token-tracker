@@ -28,7 +28,8 @@ export interface TokenSummary {
 
 export interface TokenPrice {
   time: string;
-  price: number;
+  /** Null until the token has traded at least once against the price asset. */
+  price: number | null;
   volume: number;
   hasTrades: boolean;
 }
