@@ -201,6 +201,47 @@
     </section>
 
     <section class="card">
+      <div class="section-head">
+        <h2>Variation since the first tracked day</h2>
+        <span class="muted small">Last {{ historyRange().label }} · same period as the daily balance</span>
+      </div>
+      @if (variations().length) {
+        <app-line-chart [labels]="variationLabels()" [series]="variationSeries()" unit=" %" />
+        <div class="table-wrap">
+          <table class="variations">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th class="num">Variation</th>
+                <th class="num">Reference balance</th>
+                <th>First tracked day</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (v of variations(); track v.assetId; let i = $index) {
+                <tr>
+                  <td [title]="v.assetId">
+                    <span class="swatch" [style.background]="variationColors[i % variationColors.length]"></span>
+                    {{ v.assetName }}
+                  </td>
+                  <td class="num" [class]="trendClass(v.lastPercent)">{{ v.lastPercent | signedPercent }}</td>
+                  <td class="num">{{ v.baseBalance | amount }}</td>
+                  <td class="small">{{ v.baseDate }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small">
+          0 % is the balance of each asset on its own first tracked day. Only the assets that moved are shown (the 8
+          largest variations); −100 % means the asset is no longer held.
+        </p>
+      } @else {
+        <p class="muted">No asset has moved from its first tracked balance over this period.</p>
+      }
+    </section>
+
+    <section class="card">
       <h2>Current balances</h2>
       @if (!balances().length) {
         <p class="muted">This address holds nothing.</p>

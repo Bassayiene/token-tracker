@@ -162,6 +162,8 @@ Le message doit arriver dans Telegram ; sinon l'erreur renvoyée par Telegram s'
 - Chaque jour (UTC), le dernier solde observé de chaque actif est conservé : la page affiche sa courbe
   (*Details* > *Daily balance*). L'historique commence le jour où l'adresse est ajoutée, ou le jour de la mise
   à jour pour les adresses déjà surveillées.
+- Un second graphique (*Variation since the first tracked day*) montre, en %, l'écart de chaque actif par rapport à
+  son solde du premier jour enregistré. Seuls les actifs qui ont bougé y figurent (les 8 plus fortes variations).
 - Si le nœud Waves ne répond pas, la vérification est sautée (aucune fausse alerte) et l'erreur apparaît dans la
   colonne *Status*.
 - Si Telegram ne répond pas, les variations sont renvoyées à la vérification suivante, pendant 24 h.

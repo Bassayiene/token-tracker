@@ -3,6 +3,7 @@ package com.tokentracker.service;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.tokentracker.service.dto.AddressAssetVariationDTO;
 import com.tokentracker.service.dto.AddressBalanceChangeDTO;
 import com.tokentracker.service.dto.AddressBalanceDTO;
 import com.tokentracker.service.dto.AddressCheckResultDTO;
@@ -44,6 +45,17 @@ public interface AddressWatchService {
      * @param to   last day, default today (UTC)
      */
     List<AddressDailyBalanceDTO> getHistory(Long id, String assetId, LocalDate from, LocalDate to);
+
+    /**
+     * Daily variation of the assets of a watched address, in percent of their balance on their first tracked day.
+     * Only the assets whose balance differs from that reference at some point of the period are returned,
+     * largest variation on the last day first.
+     *
+     * @param from  first day, default 90 days before {@code to}
+     * @param to    last day, default today (UTC)
+     * @param limit maximum number of assets returned
+     */
+    List<AddressAssetVariationDTO> getVariations(Long id, LocalDate from, LocalDate to, int limit);
 
     /** Scheduled job: checks every watched address. One failing address does not stop the others. */
     List<AddressCheckResultDTO> checkAll();

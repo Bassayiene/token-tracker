@@ -21,6 +21,19 @@ public interface AddressBalanceDailyRepository extends JpaRepository<AddressBala
     List<AddressBalanceDaily> findByWatchedAddressIdAndAssetIdAndDateBetweenOrderByDateAsc(
             Long watchedAddressId, String assetId, LocalDate from, LocalDate to);
 
+    /** Every asset row of a period, oldest day first. */
+    List<AddressBalanceDaily> findByWatchedAddressIdAndDateBetweenOrderByDateAscIdAsc(
+            Long watchedAddressId, LocalDate from, LocalDate to);
+
+    /** The row of the first tracked day of every asset of the address. */
+    @Query("""
+            select d from AddressBalanceDaily d
+            where d.watchedAddressId = :watchedAddressId
+              and d.date = (select min(f.date) from AddressBalanceDaily f
+                            where f.watchedAddressId = d.watchedAddressId and f.assetId = d.assetId)
+            """)
+    List<AddressBalanceDaily> findFirstDays(@Param("watchedAddressId") Long watchedAddressId);
+
     /** Every asset that has a history for the address, including those no longer held. */
     @Query("""
             select new com.tokentracker.service.dto.AddressHistoryAssetDTO(d.assetId, max(d.assetName), min(d.date), max(d.date))

@@ -51,6 +51,18 @@ export interface AddressDailyBalance {
   balance: number;
 }
 
+/** Daily variation of one asset, in percent of its balance on its first tracked day. */
+export interface AddressAssetVariation {
+  assetId: string;
+  assetName: string;
+  /** First day with a stored balance: the 0 % reference. */
+  baseDate: string;
+  baseBalance: number;
+  /** Variation on the last day of the period. */
+  lastPercent: number;
+  points: { date: string; percent: number }[];
+}
+
 export interface AddressCheckResult {
   id: number;
   address: string;
@@ -96,6 +108,12 @@ export class WatchApiService {
       params = params.set('from', from);
     }
     return this.http.get<AddressDailyBalance[]>(`${this.baseUrl}/${id}/history`, { params });
+  }
+
+  /** Assets that moved the most, in percent of their first tracked day; `from` is an ISO date (default last 90 days). */
+  getVariations(id: number, from?: string): Observable<AddressAssetVariation[]> {
+    const params = from ? new HttpParams().set('from', from) : undefined;
+    return this.http.get<AddressAssetVariation[]>(`${this.baseUrl}/${id}/history/variations`, { params });
   }
 
   check(id: number): Observable<AddressCheckResult> {

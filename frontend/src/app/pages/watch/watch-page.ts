@@ -7,6 +7,7 @@ import { Observable } from 'rxjs';
 import { AuthService } from '../../core/auth.service';
 import { errorMessage } from '../../core/token-api.service';
 import {
+  AddressAssetVariation,
   AddressBalance,
   AddressBalanceChange,
   AddressDailyBalance,
@@ -14,7 +15,7 @@ import {
   WatchApiService,
   WatchedAddress,
 } from '../../core/watch-api.service';
-import { AmountPipe, ShortIdPipe, trendClass } from '../../shared/formatting';
+import { AmountPipe, ShortIdPipe, SignedPercentPipe, trendClass } from '../../shared/formatting';
 import { ChartSeries, LineChart } from '../../shared/line-chart';
 
 interface RangeOption {
@@ -30,6 +31,18 @@ const HISTORY_RANGES: RangeOption[] = [
 
 const DAY_MS = 24 * 3600 * 1000;
 
+/** One colour per curve of the variation chart; the backend returns at most this many assets. */
+const VARIATION_COLORS = [
+  '#2563eb',
+  '#dc2626',
+  '#059669',
+  '#d97706',
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#4b5563',
+];
+
 /** Base58 Waves address, same rule as the backend `AddWatchedAddressRequest`. */
 const ADDRESS_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{35}$/;
 const EXPLORER_ADDRESS_URL = 'https://wscan.io/';
@@ -37,7 +50,7 @@ const EXPLORER_ADDRESS_URL = 'https://wscan.io/';
 /** Admin page: addresses whose balance variations are notified on Telegram. */
 @Component({
   selector: 'app-watch-page',
-  imports: [ReactiveFormsModule, RouterLink, DatePipe, AmountPipe, ShortIdPipe, LineChart],
+  imports: [ReactiveFormsModule, RouterLink, DatePipe, AmountPipe, ShortIdPipe, SignedPercentPipe, LineChart],
   templateUrl: './watch-page.html',
 })
 export class WatchPage {
@@ -56,6 +69,26 @@ export class WatchPage {
   protected readonly history = signal<AddressDailyBalance[]>([]);
   protected readonly historyRanges = HISTORY_RANGES;
   protected readonly historyRange = signal(HISTORY_RANGES[1]);
+
+  /** Assets that moved, in percent of their first tracked day, over the same period as the daily balance. */
+  protected readonly variations = signal<AddressAssetVariation[]>([]);
+  protected readonly variationColors = VARIATION_COLORS;
+  /** Every day on which at least one of the assets has a point. */
+  protected readonly variationLabels = computed(() =>
+    [...new Set(this.variations().flatMap((v) => v.points.map((p) => p.date)))].sort(),
+  );
+  protected readonly variationSeries = computed<ChartSeries[]>(() => {
+    const labels = this.variationLabels();
+    return this.variations().map((v, i) => {
+      const byDate = new Map(v.points.map((p) => [p.date, p.percent]));
+      return {
+        label: v.assetName,
+        // Days without a point for this asset are bridged by the chart
+        data: labels.map((date) => byDate.get(date) ?? null),
+        color: VARIATION_COLORS[i % VARIATION_COLORS.length],
+      };
+    });
+  });
 
   protected readonly historyLabels = computed(() => this.history().map((h) => h.date));
   protected readonly historySeries = computed<ChartSeries[]>(() => {
@@ -158,6 +191,7 @@ export class WatchPage {
         if (this.selected()?.id === item.id) {
           this.loadDetails(item.id);
           this.loadHistory();
+          this.loadVariations();
         }
       },
     );
@@ -174,7 +208,9 @@ export class WatchPage {
     this.historyAssets.set([]);
     this.historyAssetId.set(null);
     this.history.set([]);
+    this.variations.set([]);
     this.loadDetails(item.id);
+    this.loadVariations();
     this.api.getHistoryAssets(item.id).subscribe({
       next: (assets) => {
         this.historyAssets.set(assets);
@@ -193,6 +229,7 @@ export class WatchPage {
   protected selectHistoryRange(range: RangeOption): void {
     this.historyRange.set(range);
     this.loadHistory();
+    this.loadVariations();
   }
 
   protected sendTest(): void {
@@ -233,11 +270,26 @@ export class WatchPage {
       this.history.set([]);
       return;
     }
-    const from = new Date(Date.now() - (this.historyRange().days - 1) * DAY_MS).toISOString().slice(0, 10);
-    this.api.getHistory(id, assetId, from).subscribe({
+    this.api.getHistory(id, assetId, this.historyFrom()).subscribe({
       next: (history) => this.history.set(history),
       error: (err) => this.error.set(errorMessage(err)),
     });
+  }
+
+  private loadVariations(): void {
+    const id = this.selected()?.id;
+    if (id === undefined) {
+      return;
+    }
+    this.api.getVariations(id, this.historyFrom()).subscribe({
+      next: (variations) => this.variations.set(variations),
+      error: (err) => this.error.set(errorMessage(err)),
+    });
+  }
+
+  /** First day (UTC) of the selected period. */
+  private historyFrom(): string {
+    return new Date(Date.now() - (this.historyRange().days - 1) * DAY_MS).toISOString().slice(0, 10);
   }
 
   private run<T>(call: () => Observable<T>, done: (value: T) => void): void {

@@ -1,6 +1,7 @@
 package com.tokentracker.service.impl;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.Clock;
@@ -38,6 +39,7 @@ import com.tokentracker.repository.AddressBalanceDailyRepository;
 import com.tokentracker.repository.AddressBalanceRepository;
 import com.tokentracker.repository.WatchedAddressRepository;
 import com.tokentracker.service.AddressWatchService;
+import com.tokentracker.service.dto.AddressAssetVariationDTO;
 import com.tokentracker.service.dto.AddressBalanceChangeDTO;
 import com.tokentracker.service.dto.AddressBalanceDTO;
 import com.tokentracker.service.dto.AddressCheckResultDTO;
@@ -66,6 +68,8 @@ public class AddressWatchServiceImpl implements AddressWatchService {
     private static final int MAX_CHANGES_PAGE = 500;
     private static final int DEFAULT_HISTORY_DAYS = 90;
     private static final int MAX_HISTORY_DAYS = 366;
+    private static final int MAX_VARIATION_ASSETS = 20;
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final WatchedAddressRepository addressRepository;
     private final AddressBalanceRepository balanceRepository;
@@ -202,6 +206,63 @@ public class AddressWatchServiceImpl implements AddressWatchService {
 
     @Override
     public List<AddressDailyBalanceDTO> getHistory(Long id, String assetId, LocalDate from, LocalDate to) {
+        LocalDate[] range = historyRange(from, to);
+        return transactionTemplate.execute(status -> {
+            require(id);
+            return dailyRepository
+                    .findByWatchedAddressIdAndAssetIdAndDateBetweenOrderByDateAsc(id, assetId, range[0], range[1]).stream()
+                    .map(d -> new AddressDailyBalanceDTO(d.getDate(), BigDecimal.valueOf(d.getBalance(), d.getDecimals())))
+                    .toList();
+        });
+    }
+
+    @Override
+    public List<AddressAssetVariationDTO> getVariations(Long id, LocalDate from, LocalDate to, int limit) {
+        LocalDate[] range = historyRange(from, to);
+        int size = Math.max(1, Math.min(limit, MAX_VARIATION_ASSETS));
+        return transactionTemplate.execute(status -> {
+            require(id);
+            Map<String, AddressBalanceDaily> firstDays = new LinkedHashMap<>();
+            dailyRepository.findFirstDays(id).forEach(row -> firstDays.put(row.getAssetId(), row));
+            Map<String, List<AddressBalanceDaily>> byAsset = new LinkedHashMap<>();
+            dailyRepository.findByWatchedAddressIdAndDateBetweenOrderByDateAscIdAsc(id, range[0], range[1])
+                    .forEach(row -> byAsset.computeIfAbsent(row.getAssetId(), k -> new ArrayList<>()).add(row));
+
+            List<AddressAssetVariationDTO> variations = new ArrayList<>();
+            for (Map.Entry<String, List<AddressBalanceDaily>> entry : byAsset.entrySet()) {
+                AddressBalanceDaily base = firstDays.get(entry.getKey());
+                // No reference to compare with: the asset was already gone when its history started.
+                if (base == null || base.getBalance() == 0) {
+                    continue;
+                }
+                List<AddressBalanceDaily> rows = entry.getValue();
+                if (rows.stream().allMatch(row -> row.getBalance() == base.getBalance())) {
+                    continue; // flat at 0 %: nothing to show
+                }
+                List<AddressAssetVariationDTO.Point> points = rows.stream()
+                        .map(row -> new AddressAssetVariationDTO.Point(row.getDate(), percent(row.getBalance(), base.getBalance())))
+                        .toList();
+                variations.add(new AddressAssetVariationDTO(base.getAssetId(), base.getAssetName(), base.getDate(),
+                        BigDecimal.valueOf(base.getBalance(), base.getDecimals()),
+                        points.get(points.size() - 1).percent(), points));
+            }
+            return variations.stream()
+                    .sorted(Comparator.comparing((AddressAssetVariationDTO v) -> v.lastPercent().abs()).reversed()
+                            .thenComparing(AddressAssetVariationDTO::assetName, String.CASE_INSENSITIVE_ORDER))
+                    .limit(size)
+                    .toList();
+        });
+    }
+
+    /** {@code (balance - base) / base * 100}, with 4 decimals. */
+    static BigDecimal percent(long balance, long base) {
+        return BigDecimal.valueOf(balance).subtract(BigDecimal.valueOf(base))
+                .multiply(HUNDRED)
+                .divide(BigDecimal.valueOf(base), 4, RoundingMode.HALF_UP);
+    }
+
+    /** Requested days, both inclusive: defaults to the last 90 days and refuses more than a year. */
+    private LocalDate[] historyRange(LocalDate from, LocalDate to) {
         LocalDate end = to != null ? to : LocalDate.now(clock);
         LocalDate start = from != null ? from : end.minusDays(DEFAULT_HISTORY_DAYS - 1L);
         if (start.isAfter(end)) {
@@ -211,13 +272,7 @@ public class AddressWatchServiceImpl implements AddressWatchService {
             throw new BadRequestAlertException("Range too large (max " + MAX_HISTORY_DAYS + " days)", ENTITY,
                     "rangetoolarge");
         }
-        return transactionTemplate.execute(status -> {
-            require(id);
-            return dailyRepository
-                    .findByWatchedAddressIdAndAssetIdAndDateBetweenOrderByDateAsc(id, assetId, start, end).stream()
-                    .map(d -> new AddressDailyBalanceDTO(d.getDate(), BigDecimal.valueOf(d.getBalance(), d.getDecimals())))
-                    .toList();
-        });
+        return new LocalDate[] { start, end };
     }
 
     // ─── Checks ──────────────────────────────────────────────────────────

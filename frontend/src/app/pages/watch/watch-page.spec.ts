@@ -8,6 +8,7 @@ import { storeSession } from '../../testing/session';
 import { WatchPage } from './watch-page';
 
 const ADDRESS = '3PRCoguiVX33Fj6z46qgxheib6K1267W7Zr';
+const VARIATIONS_URL = '/api/watched-addresses/7/history/variations';
 
 const WATCHED: WatchedAddress = {
   id: 7,
@@ -142,6 +143,7 @@ describe('WatchPage', () => {
       .expectOne('/api/watched-addresses/7/balances')
       .flush([{ assetId: 'WAVES', assetName: 'WAVES', balance: 0.5, updatedAt: '2026-10-11T09:10:00Z' }]);
     http.expectOne('/api/watched-addresses/7/history/assets').flush([]);
+    http.expectOne((r) => r.url === VARIATIONS_URL).flush([]);
     await fixture.whenStable();
 
     expect(el.textContent).toContain('Latest variations of Treasury');
@@ -158,6 +160,7 @@ describe('WatchPage', () => {
     [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Details'))!.click();
     http.expectOne('/api/watched-addresses/7/changes').flush([]);
     http.expectOne('/api/watched-addresses/7/balances').flush([]);
+    http.expectOne((r) => r.url === VARIATIONS_URL).flush([]);
     http.expectOne('/api/watched-addresses/7/history/assets').flush([
       { assetId: 'WAVES', assetName: 'WAVES', firstDate: '2026-10-10', lastDate: '2026-10-11' },
       { assetId: 'TN', assetName: 'TurtleNetwork', firstDate: '2026-10-10', lastDate: '2026-10-10' },
@@ -186,5 +189,57 @@ describe('WatchPage', () => {
     await fixture.whenStable();
 
     expect(el.textContent).toContain('1 day(s) recorded');
+  });
+
+  it('charts the variation of the assets that moved, in percent of their first tracked day', async () => {
+    const fixture = await openAsAdmin([WATCHED]);
+    const el = fixture.nativeElement as HTMLElement;
+
+    [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Details'))!.click();
+    http.expectOne('/api/watched-addresses/7/changes').flush([]);
+    http.expectOne('/api/watched-addresses/7/balances').flush([]);
+    http.expectOne('/api/watched-addresses/7/history/assets').flush([]);
+    const request = http.expectOne((r) => r.url === VARIATIONS_URL);
+    expect(request.request.params.get('from')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    request.flush([
+      {
+        assetId: 'FOO',
+        assetName: 'Foo',
+        baseDate: '2026-10-09',
+        baseBalance: 100,
+        lastPercent: 75,
+        points: [
+          { date: '2026-10-09', percent: 0 },
+          { date: '2026-10-10', percent: 75 },
+        ],
+      },
+      {
+        assetId: 'WAVES',
+        assetName: 'WAVES',
+        baseDate: '2026-10-09',
+        baseBalance: 2,
+        lastPercent: -50,
+        points: [
+          { date: '2026-10-09', percent: 0 },
+          { date: '2026-10-11', percent: -50 },
+        ],
+      },
+    ]);
+    await fixture.whenStable();
+
+    const rows = el.querySelectorAll('table.variations tbody tr');
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain('Foo');
+    expect(rows[0].querySelector('.up')?.textContent).toContain('+75.00 %');
+    expect(rows[1].querySelector('.down')?.textContent).toContain('-50.00 %');
+    expect(rows[1].textContent).toContain('2026-10-09');
+
+    // Changing the period reloads the variations over the new period
+    [...el.querySelectorAll('.segmented button')].find((b) => b.textContent?.trim() === '30d')!
+      .dispatchEvent(new Event('click'));
+    http.expectOne((r) => r.url === VARIATIONS_URL).flush([]);
+    await fixture.whenStable();
+
+    expect(el.textContent).toContain('No asset has moved from its first tracked balance');
   });
 });

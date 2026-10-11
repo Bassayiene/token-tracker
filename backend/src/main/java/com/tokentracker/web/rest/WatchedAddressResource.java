@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.tokentracker.service.AddressWatchService;
 import com.tokentracker.service.dto.AddWatchedAddressRequest;
+import com.tokentracker.service.dto.AddressAssetVariationDTO;
 import com.tokentracker.service.dto.AddressBalanceChangeDTO;
 import com.tokentracker.service.dto.AddressBalanceDTO;
 import com.tokentracker.service.dto.AddressCheckResultDTO;
@@ -91,6 +92,18 @@ public class WatchedAddressResource {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return watchService.getHistory(id, assetId, from, to);
+    }
+
+    /**
+     * {@code GET /api/watched-addresses/{id}/history/variations?from=&to=&limit=} : daily variation, in percent of the
+     * first tracked day, of the assets that moved the most (default last 90 days, 8 assets).
+     */
+    @GetMapping("/{id}/history/variations")
+    public List<AddressAssetVariationDTO> getVariations(@PathVariable Long id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "8") int limit) {
+        return watchService.getVariations(id, from, to, limit);
     }
 
     /** {@code POST /api/watched-addresses/{id}/check} : check one address now. */

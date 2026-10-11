@@ -418,3 +418,15 @@ td.status {
 td.actions button + button {
   margin-left: 6px;
 }
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+}
+
+table.variations {
+  margin-top: 12px;
+}

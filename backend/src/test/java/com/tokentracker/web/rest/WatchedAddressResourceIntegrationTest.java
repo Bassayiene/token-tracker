@@ -362,6 +362,86 @@ class WatchedAddressResourceIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    // ─── Variation in percent of the first tracked day ───────────────────
+
+    @Test
+    void variationsAreExpressedInPercentOfTheFirstTrackedDayOfEachAsset() throws Exception {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        long id = watch(ADDRESS, null); // today: 1 WAVES and 2500 TN
+        saveDaily(id, "WAVES", 8, today.minusDays(2), 200_000_000L); // first tracked day: 2 WAVES
+        saveDaily(id, "FOO", 0, today.minusDays(2), 100L);
+        saveDaily(id, "FOO", 0, today.minusDays(1), 175L);
+        // First row already at 0: there is no reference to compare with
+        saveDaily(id, "GHOST", 0, today.minusDays(1), 0L);
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations").with(admin()))
+                .andExpect(status().isOk())
+                // TN never moved from its first day and GHOST has no reference: neither is returned
+                .andExpect(jsonPath("$", hasSize(2)))
+                // Largest variation on the last day first
+                .andExpect(jsonPath("$[0].assetId").value("FOO"))
+                .andExpect(jsonPath("$[0].baseDate").value(today.minusDays(2).toString()))
+                .andExpect(jsonPath("$[0].baseBalance").value(100))
+                .andExpect(jsonPath("$[0].lastPercent").value(75.0))
+                .andExpect(jsonPath("$[0].points", hasSize(2)))
+                .andExpect(jsonPath("$[0].points[0].percent").value(0.0))
+                .andExpect(jsonPath("$[0].points[1].date").value(today.minusDays(1).toString()))
+                .andExpect(jsonPath("$[0].points[1].percent").value(75.0))
+                .andExpect(jsonPath("$[1].assetId").value("WAVES"))
+                .andExpect(jsonPath("$[1].baseBalance").value(2.0))
+                .andExpect(jsonPath("$[1].lastPercent").value(-50.0))
+                .andExpect(jsonPath("$[1].points[1].date").value(today.toString()));
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations").param("limit", "1").with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].assetId").value("FOO"));
+    }
+
+    @Test
+    void thePercentageStaysRelativeToTheFirstDayEvenWhenItIsOutsideThePeriod() throws Exception {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        long id = watch(ADDRESS, null); // today: 1 WAVES
+        saveDaily(id, "WAVES", 8, today.minusDays(40), 400_000_000L); // first tracked day: 4 WAVES
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations")
+                        .param("from", today.minusDays(6).toString()).with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].baseDate").value(today.minusDays(40).toString()))
+                .andExpect(jsonPath("$[0].points", hasSize(1)))
+                .andExpect(jsonPath("$[0].points[0].percent").value(-75.0));
+    }
+
+    @Test
+    void anAssetNoLongerHeldIsAtMinusOneHundredPercent() throws Exception {
+        long id = watch(ADDRESS, null);
+        holds(ADDRESS, 100_000_000L);
+        mockMvc.perform(post("/api/watched-addresses/" + id + "/check").with(admin()));
+        // Same day as its first tracked day: the reference is the first value stored, so nothing can be compared yet
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations").with(admin()))
+                .andExpect(jsonPath("$", hasSize(0)));
+
+        saveDaily(id, "BAR", 2, LocalDate.now(ZoneOffset.UTC).minusDays(3), 5000L);
+        saveDaily(id, "BAR", 2, LocalDate.now(ZoneOffset.UTC).minusDays(1), 0L);
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations").with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].assetId").value("BAR"))
+                .andExpect(jsonPath("$[0].lastPercent").value(-100.0));
+    }
+
+    @Test
+    void variationRangesAreValidatedAndReservedToAdmins() throws Exception {
+        long id = watch(ADDRESS, null);
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations")
+                        .param("from", "2026-10-11").param("to", "2026-10-01").with(admin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorKey").value("invalidrange"));
+        mockMvc.perform(get("/api/watched-addresses/999999/history/variations").with(admin()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/variations"))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ─── Telegram set-up and access rules ────────────────────────────────
 
     @Test
