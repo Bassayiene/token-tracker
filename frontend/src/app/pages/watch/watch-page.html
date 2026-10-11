@@ -166,6 +166,41 @@
     </section>
 
     <section class="card">
+      <div class="section-head">
+        <h2>Daily balance</h2>
+        <div class="controls">
+          @if (historyAssets().length) {
+            <select
+              aria-label="Asset"
+              [value]="historyAssetId()"
+              (change)="selectHistoryAsset($any($event.target).value)"
+            >
+              @for (a of historyAssets(); track a.assetId) {
+                <option [value]="a.assetId" [selected]="a.assetId === historyAssetId()">{{ a.assetName }}</option>
+              }
+            </select>
+          }
+          <div class="segmented">
+            @for (r of historyRanges; track r.label) {
+              <button type="button" [class.active]="r === historyRange()" (click)="selectHistoryRange(r)">
+                {{ r.label }}
+              </button>
+            }
+          </div>
+        </div>
+      </div>
+      @if (history().length) {
+        <app-line-chart [labels]="historyLabels()" [series]="historySeries()" />
+        <p class="muted small">
+          One point per day (UTC): the last balance observed that day. {{ history().length }} day(s) recorded over
+          this period.
+        </p>
+      } @else {
+        <p class="muted">No daily balance recorded for this period yet.</p>
+      }
+    </section>
+
+    <section class="card">
       <h2>Current balances</h2>
       @if (!balances().length) {
         <p class="muted">This address holds nothing.</p>

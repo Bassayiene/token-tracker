@@ -141,11 +141,50 @@ describe('WatchPage', () => {
     http
       .expectOne('/api/watched-addresses/7/balances')
       .flush([{ assetId: 'WAVES', assetName: 'WAVES', balance: 0.5, updatedAt: '2026-10-11T09:10:00Z' }]);
+    http.expectOne('/api/watched-addresses/7/history/assets').flush([]);
     await fixture.whenStable();
 
     expect(el.textContent).toContain('Latest variations of Treasury');
     expect(el.querySelector('section .down')?.textContent).toContain('-0.5');
     expect(el.textContent).toContain('sent');
     expect(el.textContent).toContain('Current balances');
+    expect(el.textContent).toContain('No daily balance recorded for this period yet.');
+  });
+
+  it('charts the daily balance of the chosen asset, including assets no longer held', async () => {
+    const fixture = await openAsAdmin([WATCHED]);
+    const el = fixture.nativeElement as HTMLElement;
+
+    [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Details'))!.click();
+    http.expectOne('/api/watched-addresses/7/changes').flush([]);
+    http.expectOne('/api/watched-addresses/7/balances').flush([]);
+    http.expectOne('/api/watched-addresses/7/history/assets').flush([
+      { assetId: 'WAVES', assetName: 'WAVES', firstDate: '2026-10-10', lastDate: '2026-10-11' },
+      { assetId: 'TN', assetName: 'TurtleNetwork', firstDate: '2026-10-10', lastDate: '2026-10-10' },
+    ]);
+
+    // WAVES, listed first, is charted by default over the last 90 days
+    const waves = http.expectOne((r) => r.url === '/api/watched-addresses/7/history');
+    expect(waves.request.params.get('assetId')).toBe('WAVES');
+    expect(waves.request.params.get('from')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    waves.flush([
+      { date: '2026-10-10', balance: 1 },
+      { date: '2026-10-11', balance: 0.5 },
+    ]);
+    await fixture.whenStable();
+
+    expect(el.querySelector('app-line-chart')).not.toBeNull();
+    expect(el.textContent).toContain('2 day(s) recorded');
+    const select = el.querySelector('select') as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual(['WAVES', 'TurtleNetwork']);
+
+    select.value = 'TN';
+    select.dispatchEvent(new Event('change'));
+    const tn = http.expectOne((r) => r.url === '/api/watched-addresses/7/history');
+    expect(tn.request.params.get('assetId')).toBe('TN');
+    tn.flush([{ date: '2026-10-10', balance: 0 }]);
+    await fixture.whenStable();
+
+    expect(el.textContent).toContain('1 day(s) recorded');
   });
 });

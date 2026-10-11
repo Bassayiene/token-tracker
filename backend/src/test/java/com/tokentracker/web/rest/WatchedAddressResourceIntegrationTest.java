@@ -18,6 +18,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,8 +44,10 @@ import com.tokentracker.client.TelegramClient;
 import com.tokentracker.client.WavesDataApiClient;
 import com.tokentracker.client.WavesNodeClient;
 import com.tokentracker.client.dto.WavesAssetBalance;
+import com.tokentracker.domain.AddressBalanceDaily;
 import com.tokentracker.exception.TelegramException;
 import com.tokentracker.exception.WavesApiException;
+import com.tokentracker.repository.AddressBalanceDailyRepository;
 
 /**
  * Watched addresses end to end on H2: the Waves node and Telegram are mocked, everything else is real.
@@ -61,6 +66,7 @@ class WatchedAddressResourceIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private AddressBalanceDailyRepository dailyRepository;
 
     @MockitoBean private WavesDataApiClient dataApiClient;
     @MockitoBean private WavesNodeClient nodeClient;
@@ -271,6 +277,91 @@ class WatchedAddressResourceIntegrationTest {
         watch(ADDRESS, null);
     }
 
+    // ─── Daily history ───────────────────────────────────────────────────
+
+    @Test
+    void eachDayKeepsTheLastBalanceObservedThatDay() throws Exception {
+        String today = LocalDate.now(ZoneOffset.UTC).toString();
+        long id = watch(ADDRESS, null);
+
+        // The baseline is already today's value
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", "WAVES").with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].date").value(today))
+                .andExpect(jsonPath("$[0].balance").value(1.0));
+
+        // Later the same day: the row of the day follows the balance instead of adding a second point
+        holds(ADDRESS, 50_000_000L, new WavesAssetBalance(TN, "TurtleNetwork", 8, 250_000_000_000L));
+        mockMvc.perform(post("/api/watched-addresses/" + id + "/check").with(admin()));
+        // A check without any variation keeps it as it is
+        mockMvc.perform(post("/api/watched-addresses/" + id + "/check").with(admin()));
+
+        saveDaily(id, "WAVES", 8, LocalDate.now(ZoneOffset.UTC).minusDays(1), 200_000_000L);
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", "WAVES").with(admin()))
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].balance").value(2.0))
+                .andExpect(jsonPath("$[1].date").value(today))
+                .andExpect(jsonPath("$[1].balance").value(0.5));
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", TN).with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].balance").value(2500.0));
+
+        // Bounds are inclusive
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", "WAVES")
+                        .param("from", today).param("to", today).with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].balance").value(0.5));
+    }
+
+    @Test
+    void anAssetNoLongerHeldEndsItsCurveAtZeroAndStaysListed() throws Exception {
+        long id = watch(ADDRESS, null);
+        holds(ADDRESS, 100_000_000L);
+        mockMvc.perform(post("/api/watched-addresses/" + id + "/check").with(admin()));
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", TN).with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].balance").value(0.0));
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history/assets").with(admin()))
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].assetId").value("WAVES"))
+                .andExpect(jsonPath("$[1].assetId").value(TN))
+                .andExpect(jsonPath("$[1].assetName").value("TurtleNetwork"))
+                .andExpect(jsonPath("$[1].lastDate").value(LocalDate.now(ZoneOffset.UTC).toString()));
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/balances").with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void aNodeFailureWritesNoDailyValue() throws Exception {
+        long id = watch(ADDRESS, null);
+        when(nodeClient.getAssetBalances(ADDRESS)).thenThrow(new WavesApiException("Unable to reach the Waves node"));
+        mockMvc.perform(post("/api/watched-addresses/" + id + "/check").with(admin()));
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", TN).with(admin()))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].balance").value(2500.0));
+    }
+
+    @Test
+    void historyRangesAndUnknownAddressesAreRejected() throws Exception {
+        long id = watch(ADDRESS, null);
+
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", "WAVES")
+                        .param("from", "2026-10-11").param("to", "2026-10-01").with(admin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorKey").value("invalidrange"));
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", "WAVES")
+                        .param("from", "2024-01-01").param("to", "2026-01-01").with(admin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorKey").value("rangetoolarge"));
+        mockMvc.perform(get("/api/watched-addresses/999999/history").param("assetId", "WAVES").with(admin()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/watched-addresses/" + id + "/history").param("assetId", "WAVES"))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ─── Telegram set-up and access rules ────────────────────────────────
 
     @Test
@@ -303,6 +394,18 @@ class WatchedAddressResourceIntegrationTest {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
+
+    private void saveDaily(long watchedAddressId, String assetId, int decimals, LocalDate date, long balance) {
+        AddressBalanceDaily row = new AddressBalanceDaily();
+        row.setWatchedAddressId(watchedAddressId);
+        row.setAssetId(assetId);
+        row.setAssetName(assetId);
+        row.setDecimals(decimals);
+        row.setDate(date);
+        row.setBalance(balance);
+        row.setUpdatedAt(Instant.now());
+        dailyRepository.save(row);
+    }
 
     private void holds(String address, long waves, WavesAssetBalance... assets) {
         when(nodeClient.getWavesBalance(address)).thenReturn(waves);

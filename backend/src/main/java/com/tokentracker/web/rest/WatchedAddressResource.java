@@ -1,11 +1,13 @@
 package com.tokentracker.web.rest;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +23,8 @@ import com.tokentracker.service.dto.AddWatchedAddressRequest;
 import com.tokentracker.service.dto.AddressBalanceChangeDTO;
 import com.tokentracker.service.dto.AddressBalanceDTO;
 import com.tokentracker.service.dto.AddressCheckResultDTO;
+import com.tokentracker.service.dto.AddressDailyBalanceDTO;
+import com.tokentracker.service.dto.AddressHistoryAssetDTO;
 import com.tokentracker.service.dto.WatchedAddressDTO;
 
 import jakarta.validation.Valid;
@@ -73,6 +77,20 @@ public class WatchedAddressResource {
     public List<AddressBalanceChangeDTO> getChanges(@PathVariable Long id,
             @RequestParam(defaultValue = "100") int limit) {
         return watchService.getChanges(id, limit);
+    }
+
+    /** {@code GET /api/watched-addresses/{id}/history/assets} : assets having daily balances, even if no longer held. */
+    @GetMapping("/{id}/history/assets")
+    public List<AddressHistoryAssetDTO> getHistoryAssets(@PathVariable Long id) {
+        return watchService.getHistoryAssets(id);
+    }
+
+    /** {@code GET /api/watched-addresses/{id}/history?assetId=&from=&to=} : daily balances of one asset (default last 90 days). */
+    @GetMapping("/{id}/history")
+    public List<AddressDailyBalanceDTO> getHistory(@PathVariable Long id, @RequestParam String assetId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return watchService.getHistory(id, assetId, from, to);
     }
 
     /** {@code POST /api/watched-addresses/{id}/check} : check one address now. */

@@ -159,6 +159,9 @@ Le message doit arriver dans Telegram ; sinon l'erreur renvoyée par Telegram s'
 
 - L'ajout d'une adresse enregistre ses soldes actuels comme point de départ : seules les variations **suivantes**
   sont signalées.
+- Chaque jour (UTC), le dernier solde observé de chaque actif est conservé : la page affiche sa courbe
+  (*Details* > *Daily balance*). L'historique commence le jour où l'adresse est ajoutée, ou le jour de la mise
+  à jour pour les adresses déjà surveillées.
 - Si le nœud Waves ne répond pas, la vérification est sautée (aucune fausse alerte) et l'erreur apparaît dans la
   colonne *Status*.
 - Si Telegram ne répond pas, les variations sont renvoyées à la vérification suivante, pendant 24 h.

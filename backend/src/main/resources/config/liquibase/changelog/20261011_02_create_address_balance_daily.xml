@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        One row per watched address, asset and day (UTC): the last balance observed that day.
+        Written at every check, so the row of the current day follows the balance until midnight.
+        An asset that is no longer held gets a 0 on the day it left, then no more rows.
+    -->
+    <changeSet id="20261011_02_address_balance_daily" author="token-tracker">
+        <createTable tableName="address_balance_daily">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="watched_address_id" type="bigint">
+                <constraints nullable="false" foreignKeyName="fk_address_balance_daily_watched_address"
+                    references="watched_address(id)" deleteCascade="true" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="asset_name" type="varchar(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="decimals" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <column name="date" type="date">
+                <constraints nullable="false" />
+            </column>
+            <!-- Raw on-chain amount -->
+            <column name="balance" type="bigint">
+                <constraints nullable="false" />
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <!-- Also serves the history of one asset (address, asset, date range) -->
+        <addUniqueConstraint tableName="address_balance_daily" columnNames="watched_address_id, asset_id, date"
+            constraintName="ux_address_balance_daily_address_asset_date" />
+        <createIndex tableName="address_balance_daily" indexName="ix_address_balance_daily_address_date">
+            <column name="watched_address_id" />
+            <column name="date" />
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

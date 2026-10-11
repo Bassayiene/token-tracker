@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
@@ -37,6 +37,20 @@ export interface AddressBalanceChange {
   notified: boolean;
 }
 
+/** An asset whose daily balances are stored for an address, even if it is no longer held. */
+export interface AddressHistoryAsset {
+  assetId: string;
+  assetName: string;
+  firstDate: string;
+  lastDate: string;
+}
+
+/** Last balance observed on one day (UTC). */
+export interface AddressDailyBalance {
+  date: string;
+  balance: number;
+}
+
 export interface AddressCheckResult {
   id: number;
   address: string;
@@ -69,6 +83,19 @@ export class WatchApiService {
 
   getChanges(id: number): Observable<AddressBalanceChange[]> {
     return this.http.get<AddressBalanceChange[]>(`${this.baseUrl}/${id}/changes`);
+  }
+
+  getHistoryAssets(id: number): Observable<AddressHistoryAsset[]> {
+    return this.http.get<AddressHistoryAsset[]>(`${this.baseUrl}/${id}/history/assets`);
+  }
+
+  /** Daily balances of one asset; `from` is an ISO date (default last 90 days). */
+  getHistory(id: number, assetId: string, from?: string): Observable<AddressDailyBalance[]> {
+    let params = new HttpParams().set('assetId', assetId);
+    if (from) {
+      params = params.set('from', from);
+    }
+    return this.http.get<AddressDailyBalance[]>(`${this.baseUrl}/${id}/history`, { params });
   }
 
   check(id: number): Observable<AddressCheckResult> {

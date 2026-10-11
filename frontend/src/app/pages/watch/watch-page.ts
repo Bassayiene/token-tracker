@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
@@ -9,10 +9,26 @@ import { errorMessage } from '../../core/token-api.service';
 import {
   AddressBalance,
   AddressBalanceChange,
+  AddressDailyBalance,
+  AddressHistoryAsset,
   WatchApiService,
   WatchedAddress,
 } from '../../core/watch-api.service';
 import { AmountPipe, ShortIdPipe, trendClass } from '../../shared/formatting';
+import { ChartSeries, LineChart } from '../../shared/line-chart';
+
+interface RangeOption {
+  label: string;
+  days: number;
+}
+
+const HISTORY_RANGES: RangeOption[] = [
+  { label: '30d', days: 30 },
+  { label: '90d', days: 90 },
+  { label: '1y', days: 365 },
+];
+
+const DAY_MS = 24 * 3600 * 1000;
 
 /** Base58 Waves address, same rule as the backend `AddWatchedAddressRequest`. */
 const ADDRESS_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{35}$/;
@@ -21,7 +37,7 @@ const EXPLORER_ADDRESS_URL = 'https://wscan.io/';
 /** Admin page: addresses whose balance variations are notified on Telegram. */
 @Component({
   selector: 'app-watch-page',
-  imports: [ReactiveFormsModule, RouterLink, DatePipe, AmountPipe, ShortIdPipe],
+  imports: [ReactiveFormsModule, RouterLink, DatePipe, AmountPipe, ShortIdPipe, LineChart],
   templateUrl: './watch-page.html',
 })
 export class WatchPage {
@@ -33,6 +49,26 @@ export class WatchPage {
   protected readonly selected = signal<WatchedAddress | null>(null);
   protected readonly changes = signal<AddressBalanceChange[]>([]);
   protected readonly balances = signal<AddressBalance[]>([]);
+
+  /** Assets that have daily balances for the selected address, including those no longer held. */
+  protected readonly historyAssets = signal<AddressHistoryAsset[]>([]);
+  protected readonly historyAssetId = signal<string | null>(null);
+  protected readonly history = signal<AddressDailyBalance[]>([]);
+  protected readonly historyRanges = HISTORY_RANGES;
+  protected readonly historyRange = signal(HISTORY_RANGES[1]);
+
+  protected readonly historyLabels = computed(() => this.history().map((h) => h.date));
+  protected readonly historySeries = computed<ChartSeries[]>(() => {
+    const asset = this.historyAssets().find((a) => a.assetId === this.historyAssetId());
+    return [
+      {
+        label: asset?.assetName ?? 'Balance',
+        data: this.history().map((h) => h.balance),
+        color: '#2563eb',
+        fill: true,
+      },
+    ];
+  });
 
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
@@ -121,6 +157,7 @@ export class WatchPage {
         this.load();
         if (this.selected()?.id === item.id) {
           this.loadDetails(item.id);
+          this.loadHistory();
         }
       },
     );
@@ -134,7 +171,28 @@ export class WatchPage {
     this.selected.set(item);
     this.changes.set([]);
     this.balances.set([]);
+    this.historyAssets.set([]);
+    this.historyAssetId.set(null);
+    this.history.set([]);
     this.loadDetails(item.id);
+    this.api.getHistoryAssets(item.id).subscribe({
+      next: (assets) => {
+        this.historyAssets.set(assets);
+        // The backend lists WAVES first
+        this.selectHistoryAsset(assets[0]?.assetId ?? null);
+      },
+      error: (err) => this.error.set(errorMessage(err)),
+    });
+  }
+
+  protected selectHistoryAsset(assetId: string | null): void {
+    this.historyAssetId.set(assetId);
+    this.loadHistory();
+  }
+
+  protected selectHistoryRange(range: RangeOption): void {
+    this.historyRange.set(range);
+    this.loadHistory();
   }
 
   protected sendTest(): void {
@@ -164,6 +222,20 @@ export class WatchPage {
     });
     this.api.getBalances(id).subscribe({
       next: (balances) => this.balances.set(balances),
+      error: (err) => this.error.set(errorMessage(err)),
+    });
+  }
+
+  private loadHistory(): void {
+    const id = this.selected()?.id;
+    const assetId = this.historyAssetId();
+    if (id === undefined || assetId === null) {
+      this.history.set([]);
+      return;
+    }
+    const from = new Date(Date.now() - (this.historyRange().days - 1) * DAY_MS).toISOString().slice(0, 10);
+    this.api.getHistory(id, assetId, from).subscribe({
+      next: (history) => this.history.set(history),
       error: (err) => this.error.set(errorMessage(err)),
     });
   }

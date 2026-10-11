@@ -5,6 +5,9 @@ import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,18 +27,22 @@ import com.tokentracker.client.dto.WavesAssetBalance;
 import com.tokentracker.config.TokenTrackerProperties;
 import com.tokentracker.domain.AddressBalance;
 import com.tokentracker.domain.AddressBalanceChange;
+import com.tokentracker.domain.AddressBalanceDaily;
 import com.tokentracker.domain.WatchedAddress;
 import com.tokentracker.exception.BadRequestAlertException;
 import com.tokentracker.exception.NotFoundAlertException;
 import com.tokentracker.exception.TelegramException;
 import com.tokentracker.exception.WavesApiException;
 import com.tokentracker.repository.AddressBalanceChangeRepository;
+import com.tokentracker.repository.AddressBalanceDailyRepository;
 import com.tokentracker.repository.AddressBalanceRepository;
 import com.tokentracker.repository.WatchedAddressRepository;
 import com.tokentracker.service.AddressWatchService;
 import com.tokentracker.service.dto.AddressBalanceChangeDTO;
 import com.tokentracker.service.dto.AddressBalanceDTO;
 import com.tokentracker.service.dto.AddressCheckResultDTO;
+import com.tokentracker.service.dto.AddressDailyBalanceDTO;
+import com.tokentracker.service.dto.AddressHistoryAssetDTO;
 import com.tokentracker.service.dto.WatchedAddressDTO;
 
 /**
@@ -57,10 +64,13 @@ public class AddressWatchServiceImpl implements AddressWatchService {
     /** Lines stop being added past this size, to stay under Telegram's limit with the footer. */
     private static final int MESSAGE_SOFT_LIMIT = TelegramClient.MAX_MESSAGE_LENGTH - 300;
     private static final int MAX_CHANGES_PAGE = 500;
+    private static final int DEFAULT_HISTORY_DAYS = 90;
+    private static final int MAX_HISTORY_DAYS = 366;
 
     private final WatchedAddressRepository addressRepository;
     private final AddressBalanceRepository balanceRepository;
     private final AddressBalanceChangeRepository changeRepository;
+    private final AddressBalanceDailyRepository dailyRepository;
     private final WavesNodeClient nodeClient;
     private final TelegramClient telegramClient;
     private final TokenTrackerProperties.Watch watch;
@@ -71,6 +81,7 @@ public class AddressWatchServiceImpl implements AddressWatchService {
             WatchedAddressRepository addressRepository,
             AddressBalanceRepository balanceRepository,
             AddressBalanceChangeRepository changeRepository,
+            AddressBalanceDailyRepository dailyRepository,
             WavesNodeClient nodeClient,
             TelegramClient telegramClient,
             TokenTrackerProperties properties,
@@ -79,6 +90,7 @@ public class AddressWatchServiceImpl implements AddressWatchService {
         this.addressRepository = addressRepository;
         this.balanceRepository = balanceRepository;
         this.changeRepository = changeRepository;
+        this.dailyRepository = dailyRepository;
         this.nodeClient = nodeClient;
         this.telegramClient = telegramClient;
         this.watch = properties.watch();
@@ -141,6 +153,7 @@ public class AddressWatchServiceImpl implements AddressWatchService {
             WatchedAddress entity = require(id);
             // Explicit deletes: the FK cascade only exists in the database, not in the persistence context.
             changeRepository.deleteByWatchedAddressId(id);
+            dailyRepository.deleteByWatchedAddressId(id);
             balanceRepository.deleteByWatchedAddressId(id);
             addressRepository.delete(entity);
             LOG.info("Stopped watching {}", entity.getAddress());
@@ -172,6 +185,37 @@ public class AddressWatchServiceImpl implements AddressWatchService {
                             BigDecimal.valueOf(c.getNewBalance(), c.getDecimals()),
                             BigDecimal.valueOf(c.getNewBalance() - c.getOldBalance(), c.getDecimals()),
                             c.isNewAsset(), c.getDetectedAt(), c.isNotified()))
+                    .toList();
+        });
+    }
+
+    @Override
+    public List<AddressHistoryAssetDTO> getHistoryAssets(Long id) {
+        return transactionTemplate.execute(status -> {
+            require(id);
+            return dailyRepository.findAssets(id).stream()
+                    .sorted(Comparator.comparing((AddressHistoryAssetDTO a) -> !WAVES_ID.equals(a.assetId()))
+                            .thenComparing(AddressHistoryAssetDTO::assetName, String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+        });
+    }
+
+    @Override
+    public List<AddressDailyBalanceDTO> getHistory(Long id, String assetId, LocalDate from, LocalDate to) {
+        LocalDate end = to != null ? to : LocalDate.now(clock);
+        LocalDate start = from != null ? from : end.minusDays(DEFAULT_HISTORY_DAYS - 1L);
+        if (start.isAfter(end)) {
+            throw new BadRequestAlertException("'from' must be before 'to'", ENTITY, "invalidrange");
+        }
+        if (ChronoUnit.DAYS.between(start, end) >= MAX_HISTORY_DAYS) {
+            throw new BadRequestAlertException("Range too large (max " + MAX_HISTORY_DAYS + " days)", ENTITY,
+                    "rangetoolarge");
+        }
+        return transactionTemplate.execute(status -> {
+            require(id);
+            return dailyRepository
+                    .findByWatchedAddressIdAndAssetIdAndDateBetweenOrderByDateAsc(id, assetId, start, end).stream()
+                    .map(d -> new AddressDailyBalanceDTO(d.getDate(), BigDecimal.valueOf(d.getBalance(), d.getDecimals())))
                     .toList();
         });
     }
@@ -289,11 +333,50 @@ public class AddressWatchServiceImpl implements AddressWatchService {
             balanceRepository.delete(gone);
         }
 
+        recordDaily(entity, holdings, stored.values(), now);
         changeRepository.saveAll(changes);
         entity.setLastCheckedAt(now);
         entity.setLastError(null);
         addressRepository.save(entity);
         return changes.size();
+    }
+
+    /**
+     * Creates or updates today's row (UTC) of every held asset, so each day ends with its last observed balance.
+     * Assets that just stopped being held get a 0 for today, which brings their curve down to zero.
+     */
+    private void recordDaily(WatchedAddress entity, Map<String, Holding> holdings, Iterable<AddressBalance> gone,
+            Instant now) {
+        LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
+        Map<String, AddressBalanceDaily> rows = new LinkedHashMap<>();
+        dailyRepository.findByWatchedAddressIdAndDate(entity.getId(), today)
+                .forEach(row -> rows.put(row.getAssetId(), row));
+
+        for (Holding holding : holdings.values()) {
+            upsertDaily(entity, rows, holding.assetId(), holding.name(), holding.decimals(), holding.balance(), today, now);
+        }
+        for (AddressBalance asset : gone) {
+            upsertDaily(entity, rows, asset.getAssetId(), asset.getAssetName(), asset.getDecimals(), 0L, today, now);
+        }
+    }
+
+    private void upsertDaily(WatchedAddress entity, Map<String, AddressBalanceDaily> rows, String assetId,
+            String assetName, int decimals, long balance, LocalDate today, Instant now) {
+        AddressBalanceDaily row = rows.get(assetId);
+        if (row == null) {
+            row = new AddressBalanceDaily();
+            row.setWatchedAddressId(entity.getId());
+            row.setAssetId(assetId);
+            row.setAssetName(truncate(assetName, 255));
+            row.setDecimals(decimals);
+            row.setDate(today);
+            row.setBalance(balance);
+            row.setUpdatedAt(now);
+            dailyRepository.save(row);
+        } else if (row.getBalance() != balance) {
+            row.setBalance(balance);
+            row.setUpdatedAt(now);
+        }
     }
 
     private static AddressBalanceChange change(WatchedAddress entity, AddressBalance row, long oldBalance,
