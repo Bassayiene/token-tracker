@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Addresses whose balances are checked periodically; changes are notified on Telegram. -->
+    <changeSet id="20261011_01_watched_address" author="token-tracker">
+        <createTable tableName="watched_address">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="address" type="varchar(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="ux_watched_address_address" />
+            </column>
+            <column name="label" type="varchar(100)" />
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+            <!-- Last successful check; null until the first snapshot (baseline) is stored -->
+            <column name="last_checked_at" type="timestamp with time zone" />
+            <!-- Error of the last check, null when it succeeded -->
+            <column name="last_error" type="varchar(500)" />
+        </createTable>
+    </changeSet>
+
+    <!-- Last known balance of every asset held by a watched address. asset_id is 'WAVES' for the native token. -->
+    <changeSet id="20261011_01_address_balance" author="token-tracker">
+        <createTable tableName="address_balance">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="watched_address_id" type="bigint">
+                <constraints nullable="false" foreignKeyName="fk_address_balance_watched_address"
+                    references="watched_address(id)" deleteCascade="true" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="asset_name" type="varchar(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="decimals" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <!-- Raw on-chain amount -->
+            <column name="balance" type="bigint">
+                <constraints nullable="false" />
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="address_balance" columnNames="watched_address_id, asset_id"
+            constraintName="ux_address_balance_address_asset" />
+    </changeSet>
+
+    <!-- Every detected variation. notified stays false until Telegram accepted the message, so it is retried. -->
+    <changeSet id="20261011_01_address_balance_change" author="token-tracker">
+        <createTable tableName="address_balance_change">
+            <column name="id" type="bigint" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false" />
+            </column>
+            <column name="watched_address_id" type="bigint">
+                <constraints nullable="false" foreignKeyName="fk_address_balance_change_watched_address"
+                    references="watched_address(id)" deleteCascade="true" />
+            </column>
+            <column name="asset_id" type="varchar(64)">
+                <constraints nullable="false" />
+            </column>
+            <column name="asset_name" type="varchar(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="decimals" type="integer">
+                <constraints nullable="false" />
+            </column>
+            <column name="old_balance" type="bigint">
+                <constraints nullable="false" />
+            </column>
+            <column name="new_balance" type="bigint">
+                <constraints nullable="false" />
+            </column>
+            <!-- The asset was not held at the previous check -->
+            <column name="new_asset" type="boolean">
+                <constraints nullable="false" />
+            </column>
+            <column name="detected_at" type="timestamp with time zone">
+                <constraints nullable="false" />
+            </column>
+            <column name="notified" type="boolean">
+                <constraints nullable="false" />
+            </column>
+        </createTable>
+        <createIndex tableName="address_balance_change" indexName="ix_address_balance_change_address_time">
+            <column name="watched_address_id" />
+            <column name="detected_at" />
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

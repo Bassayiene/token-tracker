@@ -22,5 +22,10 @@ export const routes: Routes = [
     data: { mode: 'register' },
     title: 'Sign up · Token tracker',
   },
+  {
+    path: 'watch',
+    loadComponent: () => import('./pages/watch/watch-page').then((m) => m.WatchPage),
+    title: 'Watched addresses · Token tracker',
+  },
   { path: '**', redirectTo: '' },
 ];

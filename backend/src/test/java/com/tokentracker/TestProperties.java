@@ -17,6 +17,7 @@ public final class TestProperties {
 
     public static final String DATA_API_URL = "https://api.test/v0";
     public static final String NODE_URL = "https://node.test";
+    public static final String TELEGRAM_URL = "https://telegram.test";
 
     private TestProperties() {
     }
@@ -28,7 +29,9 @@ public final class TestProperties {
                 new TokenTrackerProperties.Waves(DATA_API_URL, NODE_URL, 1000, Duration.ofSeconds(5), Duration.ofSeconds(30)),
                 new TokenTrackerProperties.Sync("-", "-", lookbackHours, backfillDays, 10, 365, false),
                 new TokenTrackerProperties.Cors(List.of("http://localhost:4200")),
-                new TokenTrackerProperties.Security(null, Duration.ofHours(1), "admin", null));
+                new TokenTrackerProperties.Security(null, Duration.ofHours(1), "admin", null),
+                new TokenTrackerProperties.Watch("-", 20, Duration.ofHours(24), 3),
+                new TokenTrackerProperties.Telegram(TELEGRAM_URL, "test-bot-token", "-1001"));
     }
 
     public static String fixture(String name) {

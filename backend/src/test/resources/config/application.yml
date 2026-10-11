@@ -49,3 +49,12 @@ token-tracker:
     token-validity: 1h
     admin-username: admin
     admin-password: admin-password
+  watch:
+    cron: "-"
+    max-addresses: 2
+    notification-retry: 24h
+    max-changes-per-message: 30
+  telegram:
+    api-url: https://telegram.test
+    bot-token: test-bot-token
+    chat-id: "-1001"

@@ -73,6 +73,8 @@ public class SecurityConfig {
                         // Admin: token management and synchronisations
                         .requestMatchers(HttpMethod.POST, "/api/tokens", "/api/tokens/sync", "/api/tokens/*/sync").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.DELETE, "/api/tokens/*").hasRole(ADMIN)
+                        // Admin: watched addresses and their Telegram notifications
+                        .requestMatchers("/api/watched-addresses", "/api/watched-addresses/**").hasRole(ADMIN)
                         // Authenticated users: everything else under /api (quantities, holders, holder stats, account)
                         .requestMatchers("/api/**").authenticated()
                         .requestMatchers("/management/health", "/management/health/**", "/management/info").permitAll()

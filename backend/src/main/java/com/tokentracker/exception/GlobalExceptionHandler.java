@@ -39,6 +39,12 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_GATEWAY, ex.getMessage(), "waves", "upstreamerror");
     }
 
+    @ExceptionHandler(TelegramException.class)
+    public ResponseEntity<Map<String, String>> handleTelegram(TelegramException ex) {
+        LOG.warn("Telegram error: {}", ex.getMessage());
+        return error(HttpStatus.BAD_GATEWAY, ex.getMessage(), "telegram", "telegramerror");
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()

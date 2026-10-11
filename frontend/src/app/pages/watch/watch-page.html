@@ -1,0 +1,196 @@
+<a routerLink="/" class="back">← All tokens</a>
+
+<div class="page-head">
+  <h1>Watched addresses</h1>
+</div>
+
+@if (!auth.isAdmin()) {
+  <section class="card locked">
+    <p>This page is reserved to the administrator.</p>
+    <div class="links">
+      <a routerLink="/login" [queryParams]="{ returnUrl: '/watch' }">Log in</a>
+    </div>
+  </section>
+} @else {
+  <p class="muted">
+    Balances of these addresses are checked every 10 minutes. Every variation of any asset they hold is sent to
+    Telegram.
+  </p>
+
+  @if (telegramConfigured() === false) {
+    <p class="alert error">
+      Telegram is not configured: variations are recorded here but nothing is sent. Set
+      <span class="mono">TELEGRAM_BOT_TOKEN</span> and <span class="mono">TELEGRAM_CHAT_ID</span> in
+      <span class="mono">.env</span>, then restart the backend.
+    </p>
+  } @else if (telegramConfigured()) {
+    <div class="card telegram-status">
+      <span>Telegram notifications are configured.</span>
+      <button type="button" class="small" (click)="sendTest()" [disabled]="busy()">Send a test message</button>
+    </div>
+  }
+
+  <form class="add-form card" [formGroup]="form" (ngSubmit)="add()">
+    <label for="address">Watch a new address</label>
+    <div class="row">
+      <input
+        id="address"
+        type="text"
+        placeholder="Waves address (3P…)"
+        autocomplete="off"
+        spellcheck="false"
+        formControlName="address"
+      />
+      <input
+        id="label"
+        type="text"
+        placeholder="Label (optional)"
+        aria-label="Label"
+        autocomplete="off"
+        maxlength="100"
+        formControlName="label"
+      />
+      <button type="submit" class="primary" [disabled]="busy()">Watch</button>
+    </div>
+    @if (form.controls.address.touched && form.controls.address.invalid && form.controls.address.value) {
+      <p class="field-error">This is not a valid Waves address (35 base58 characters).</p>
+    }
+  </form>
+
+  @if (error()) {
+    <p class="alert error">{{ error() }}</p>
+  }
+  @if (notice()) {
+    <p class="alert info">{{ notice() }}</p>
+  }
+
+  @if (loading()) {
+    <p class="muted">Loading…</p>
+  } @else if (!addresses().length) {
+    <p class="muted">No address is watched yet.</p>
+  } @else {
+    <div class="card table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Address</th>
+            <th class="num">Assets</th>
+            <th>Last check (UTC)</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of addresses(); track item.id) {
+            <tr [class.selected]="selected()?.id === item.id">
+              <td>
+                @if (item.label) {
+                  <div class="token-name">{{ item.label }}</div>
+                }
+                <a
+                  class="mono small"
+                  [href]="explorerUrl(item.address)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  [title]="'Open ' + item.address + ' on wscan.io'"
+                  >{{ item.address | shortId: 8 : 6 }} ↗</a
+                >
+              </td>
+              <td class="num">{{ item.assetsCount }}</td>
+              <td class="small">{{ (item.lastCheckedAt | date: 'yyyy-MM-dd HH:mm' : 'UTC') ?? '—' }}</td>
+              <td class="small status">
+                @if (item.lastError) {
+                  <span class="down" [title]="item.lastError">{{ item.lastError }}</span>
+                } @else {
+                  <span class="up">OK</span>
+                }
+              </td>
+              <td class="actions">
+                <button type="button" class="small" (click)="select(item)">
+                  {{ selected()?.id === item.id ? 'Hide' : 'Details' }}
+                </button>
+                <button type="button" class="small" (click)="check(item)" [disabled]="busy()">Check now</button>
+                <button type="button" class="danger small" (click)="remove(item)" [disabled]="busy()">
+                  Remove
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (selected(); as s) {
+    <section class="card">
+      <h2>Latest variations of {{ s.label ?? (s.address | shortId: 8 : 6) }}</h2>
+      @if (!changes().length) {
+        <p class="muted">No variation detected since this address is watched.</p>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Detected (UTC)</th>
+                <th>Asset</th>
+                <th class="num">Variation</th>
+                <th class="num">New balance</th>
+                <th>Telegram</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of changes(); track c.id) {
+                <tr>
+                  <td class="small">{{ c.detectedAt | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                  <td [title]="c.assetId">
+                    {{ c.assetName }}
+                    @if (c.newAsset) {
+                      <span class="badge">new</span>
+                    }
+                  </td>
+                  <td class="num" [class]="trendClass(c.delta)">{{ c.delta > 0 ? '+' : '' }}{{ c.delta | amount }}</td>
+                  <td class="num">{{ c.newBalance | amount }}</td>
+                  <td class="small">
+                    @if (c.notified) {
+                      <span class="up">sent</span>
+                    } @else {
+                      <span class="muted">not sent</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="card">
+      <h2>Current balances</h2>
+      @if (!balances().length) {
+        <p class="muted">This address holds nothing.</p>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th class="num">Balance</th>
+                <th>Last change (UTC)</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (b of balances(); track b.assetId) {
+                <tr>
+                  <td [title]="b.assetId">{{ b.assetName }}</td>
+                  <td class="num">{{ b.balance | amount }}</td>
+                  <td class="small">{{ b.updatedAt | date: 'yyyy-MM-dd HH:mm' : 'UTC' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+}

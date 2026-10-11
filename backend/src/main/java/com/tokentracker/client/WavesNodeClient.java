@@ -1,8 +1,10 @@
 package com.tokentracker.client;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
@@ -12,6 +14,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.tokentracker.client.dto.WavesAssetBalance;
 import com.tokentracker.client.dto.WavesDistributionPage;
 import com.tokentracker.config.TokenTrackerProperties;
 import com.tokentracker.exception.WavesApiException;
@@ -68,6 +71,55 @@ public class WavesNodeClient {
                 balances,
                 root.path("hasNext").asBoolean(false),
                 lastItem.isNull() || lastItem.isMissingNode() ? null : lastItem.asText());
+    }
+
+    /** Whether the node recognises the address (format, checksum and network). */
+    public boolean isValidAddress(String address) {
+        URI uri = UriComponentsBuilder.fromUriString(baseUrl).pathSegment("addresses", "validate", address).build().toUri();
+        JsonNode root = get(uri, "validity of " + address);
+        return root != null && root.path("valid").asBoolean(false);
+    }
+
+    /** Raw WAVES balance of an address. */
+    public long getWavesBalance(String address) {
+        URI uri = UriComponentsBuilder.fromUriString(baseUrl).pathSegment("addresses", "balance", address).build().toUri();
+        JsonNode root = get(uri, "WAVES balance of " + address);
+        if (root == null || !root.path("balance").isNumber()) {
+            throw new WavesApiException("Waves node returned an invalid balance response");
+        }
+        return root.path("balance").asLong();
+    }
+
+    /** Every asset held by an address (WAVES excluded), in one call. */
+    public List<WavesAssetBalance> getAssetBalances(String address) {
+        URI uri = UriComponentsBuilder.fromUriString(baseUrl).pathSegment("assets", "balance", address).build().toUri();
+        JsonNode root = get(uri, "asset balances of " + address);
+        if (root == null || !root.path("balances").isArray()) {
+            throw new WavesApiException("Waves node returned an invalid asset balances response");
+        }
+        List<WavesAssetBalance> balances = new ArrayList<>();
+        for (JsonNode item : root.path("balances")) {
+            if (!item.path("assetId").isTextual() || !item.path("balance").isNumber()) {
+                throw new WavesApiException("Waves node returned an invalid asset balance entry");
+            }
+            JsonNode issue = item.path("issueTransaction");
+            balances.add(new WavesAssetBalance(
+                    item.path("assetId").asText(),
+                    issue.path("name").isTextual() ? issue.path("name").asText() : null,
+                    issue.path("decimals").isNumber() ? issue.path("decimals").asInt() : null,
+                    item.path("balance").asLong()));
+        }
+        return balances;
+    }
+
+    /** Name and decimals of an asset, for those {@link #getAssetBalances} could not describe. */
+    public WavesAssetBalance getAssetDetails(String assetId) {
+        URI uri = UriComponentsBuilder.fromUriString(baseUrl).pathSegment("assets", "details", assetId).build().toUri();
+        JsonNode root = get(uri, "details of " + assetId);
+        if (root == null || !root.path("name").isTextual() || !root.path("decimals").isNumber()) {
+            throw new WavesApiException("Waves node returned invalid asset details");
+        }
+        return new WavesAssetBalance(assetId, root.path("name").asText(), root.path("decimals").asInt(), 0L);
     }
 
     private JsonNode get(URI uri, String what) {

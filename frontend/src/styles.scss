@@ -396,3 +396,25 @@ table {
     gap: 6px;
   }
 }
+
+.telegram-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+tr.selected td {
+  background: #eff6ff;
+}
+
+td.status {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+td.actions button + button {
+  margin-left: 6px;
+}

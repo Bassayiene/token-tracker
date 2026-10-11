@@ -22,7 +22,9 @@ public record TokenTrackerProperties(
         @Valid @NotNull Waves waves,
         @Valid @NotNull Sync sync,
         @Valid @NotNull Cors cors,
-        @Valid @NotNull Security security) {
+        @Valid @NotNull Security security,
+        @Valid @NotNull Watch watch,
+        @Valid @NotNull Telegram telegram) {
 
     public record Waves(
             @NotBlank String dataApiUrl,
@@ -57,5 +59,32 @@ public record TokenTrackerProperties(
             @NotNull Duration tokenValidity,
             @NotBlank String adminUsername,
             String adminPassword) {
+    }
+
+    /**
+     * Watched addresses.
+     *
+     * @param cron               when every watched address is checked (Spring cron, UTC); "-" disables the job
+     * @param maxAddresses       how many addresses can be watched (each check costs two node calls)
+     * @param notificationRetry  how long a variation whose Telegram message failed keeps being retried
+     * @param maxChangesPerMessage variations listed in one Telegram message; the rest is summarised as a count
+     */
+    public record Watch(
+            @NotBlank String cron,
+            @Min(1) int maxAddresses,
+            @NotNull Duration notificationRetry,
+            @Min(1) int maxChangesPerMessage) {
+    }
+
+    /**
+     * @param apiUrl   Telegram Bot API base URL
+     * @param botToken token given by @BotFather; notifications are disabled while it or the chat id is blank
+     * @param chatId   chat, group or channel receiving the notifications
+     */
+    public record Telegram(@NotBlank String apiUrl, String botToken, String chatId) {
+
+        public boolean isConfigured() {
+            return botToken != null && !botToken.isBlank() && chatId != null && !chatId.isBlank();
+        }
     }
 }

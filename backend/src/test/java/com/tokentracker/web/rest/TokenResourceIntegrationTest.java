@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.tokentracker.client.TelegramClient;
 import com.tokentracker.client.WavesDataApiClient;
 import com.tokentracker.client.WavesNodeClient;
 import com.tokentracker.client.dto.WavesAsset;
@@ -66,6 +67,7 @@ class TokenResourceIntegrationTest {
 
     @MockitoBean private WavesDataApiClient dataApiClient;
     @MockitoBean private WavesNodeClient nodeClient;
+    @MockitoBean private TelegramClient telegramClient;
 
     // ─── Read ────────────────────────────────────────────────────────────
 

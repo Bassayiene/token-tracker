@@ -125,6 +125,45 @@ Toutes les commandes se lancent dans `~/token-tracker`. Alias pratique :
 | Redémarrer | `dc restart backend` |
 | Arrêter (données conservées) | `dc down` |
 
+## Surveillance d'adresses (notifications Telegram)
+
+L'admin ajoute des adresses dans la page **Watched addresses** du site. Toutes les 10 minutes, le backend compare
+les soldes de chaque adresse (WAVES et tous les autres actifs) avec la vérification précédente et envoie un message
+Telegram par adresse qui a bougé.
+
+**1. Créer le bot.** Dans Telegram, ouvre [@BotFather](https://t.me/BotFather), envoie `/newbot`, choisis un nom.
+Il te donne un token du type `1234567890:AAH...` : c'est `TELEGRAM_BOT_TOKEN`.
+
+**2. Trouver l'identifiant du chat.** Envoie un message à ton bot (bouton *Start*), ou ajoute-le à un groupe et
+écris un message dans ce groupe. Puis, sur le VPS :
+
+```bash
+curl -s "https://api.telegram.org/bot<TON_TOKEN>/getUpdates" | grep -o '"chat":{"id":-\?[0-9]*'
+```
+
+Le nombre affiché est `TELEGRAM_CHAT_ID` (négatif pour un groupe : garde le signe `-`).
+Si rien ne s'affiche, renvoie un message au bot et relance la commande.
+
+**3. Configurer et redémarrer.**
+
+```bash
+nano .env        # TELEGRAM_BOT_TOKEN=...  et  TELEGRAM_CHAT_ID=...
+docker compose -f docker-compose.prod.yml up -d backend
+```
+
+**4. Vérifier.** Sur le site, connecté en admin : *Watched addresses* > **Send a test message**.
+Le message doit arriver dans Telegram ; sinon l'erreur renvoyée par Telegram s'affiche (par exemple
+`chat not found` : mauvais `TELEGRAM_CHAT_ID`, ou le bot n'a jamais reçu de message de ce chat).
+
+À savoir :
+
+- L'ajout d'une adresse enregistre ses soldes actuels comme point de départ : seules les variations **suivantes**
+  sont signalées.
+- Si le nœud Waves ne répond pas, la vérification est sautée (aucune fausse alerte) et l'erreur apparaît dans la
+  colonne *Status*.
+- Si Telegram ne répond pas, les variations sont renvoyées à la vérification suivante, pendant 24 h.
+- Le token du bot donne le contrôle du bot : il ne doit rester que dans `.env`.
+
 ## Sauvegardes
 
 Le conteneur `backup` sauvegarde la base **chaque nuit à 01:45 UTC**, juste après la collecte quotidienne.

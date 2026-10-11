@@ -72,3 +72,15 @@ token-tracker:
     # Created with the ADMIN role at startup if missing. No admin account is created while the password is blank.
     admin-username: ${ADMIN_USERNAME:admin}
     admin-password: ${ADMIN_PASSWORD:}
+  watch:
+    # Balances of every watched address are compared with the previous check. "-" disables the job.
+    cron: "0 */10 * * * *"
+    max-addresses: 20
+    # A variation whose Telegram message failed is sent again at each check during this time.
+    notification-retry: 24h
+    max-changes-per-message: 30
+  telegram:
+    api-url: https://api.telegram.org
+    # Token from @BotFather and id of the chat receiving the notifications. Blank: nothing is sent.
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    chat-id: ${TELEGRAM_CHAT_ID:}

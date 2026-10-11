@@ -3,6 +3,9 @@
   <span class="muted small tagline">Waves / TurtleNetwork assets · prices in WAVES</span>
   <nav class="account">
     @if (auth.session(); as s) {
+      @if (s.role === 'ADMIN') {
+        <a routerLink="/watch">Watched addresses</a>
+      }
       <span class="small">
         {{ s.username }}
         @if (s.role === 'ADMIN') {

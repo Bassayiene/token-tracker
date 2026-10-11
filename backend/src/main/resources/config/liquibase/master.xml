@@ -7,6 +7,7 @@
     <!-- SCHEMA -->
     <include file="config/liquibase/changelog/20260930_01_create_token_tables.xml" />
     <include file="config/liquibase/changelog/20260930_03_create_app_user.xml" />
+    <include file="config/liquibase/changelog/20261011_01_create_watched_address.xml" />
 
     <!-- DATA -->
     <include file="config/liquibase/changelog/20260930_02_seed_turtlenetwork.xml" />

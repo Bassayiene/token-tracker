@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tokentracker.client.TelegramClient;
 import com.tokentracker.client.WavesDataApiClient;
 import com.tokentracker.client.WavesNodeClient;
 import com.tokentracker.domain.Role;
@@ -41,6 +42,7 @@ class AuthResourceIntegrationTest {
 
     @MockitoBean private WavesDataApiClient dataApiClient;
     @MockitoBean private WavesNodeClient nodeClient;
+    @MockitoBean private TelegramClient telegramClient;
 
     @Test
     void adminAccountIsCreatedFromTheConfiguration() {
